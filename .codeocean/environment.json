@@ -1,0 +1,64 @@
+{
+	"version": 1,
+	"base_image": "codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04",
+	"options": {
+		"registry_host_arg": true,
+		"git_ask_pass": true,
+		"mount_secrets": true
+	},
+	"installers": {
+		"pip": {
+			"packages": [
+				{
+					"name": "anndata"
+				},
+				{
+					"name": "h5py"
+				},
+				{
+					"name": "numpy"
+				},
+				{
+					"name": "pandas"
+				},
+				{
+					"name": "scipy"
+				}
+			],
+			"options": {},
+			"pre_install_options": {}
+		},
+		"rcran": {
+			"packages": [
+				{
+					"name": "shiny"
+				},
+				{
+					"name": "bslib"
+				},
+				{
+					"name": "arrow"
+				},
+				{
+					"name": "dplyr"
+				},
+				{
+					"name": "ggplot2"
+				},
+				{
+					"name": "scales"
+				},
+				{
+					"name": "shinycssloaders"
+				},
+				{
+					"name": "cachem"
+				},
+				{
+					"name": "DT"
+				}
+			],
+			"use_rcache": true
+		}
+	}
+}
