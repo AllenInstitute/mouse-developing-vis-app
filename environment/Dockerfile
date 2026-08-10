@@ -1,4 +1,4 @@
-# hash:sha256:7261d71e0df0cf9bf521413efdaa5299fde887a8c434ab5660ce78cac3868d1a
+# hash:sha256:855e73b32a2664d1a273601e92adb6e379f076670b4b86de1ed5979671cb4cb7
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -6,21 +6,37 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
 
-RUN pip install -U --no-cache-dir \
-    anndata \
-    h5py \
-    numpy \
-    pandas \
-    scipy
+RUN --mount=type=secret,id=git-access-token \
+    GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
+    pip install -U --no-cache-dir \
+    anndata==0.13.2 \
+    h5py==3.16.0 \
+    numpy==2.5.2 \
+    pandas==3.0.5 \
+    scipy==1.18.0 \
+    -e git+https://github.com/AllenInstitute/abc_atlas_access.git@b16ee223d3466a57b30066973413ccc948c2e983#egg=abc-atlas-access
 
 ARG RCACHE_OPTIONS
 RUN echo $RCACHE_OPTIONS >> $(Rscript -e 'cat(R.home())')/etc/Rprofile.site
-RUN Rscript -e 'remotes::install_version("shiny")' \
-    && Rscript -e 'remotes::install_version("bslib")' \
+RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
+    && Rscript -e 'remotes::install_version("bslib", "0.12.0")' \
     && Rscript -e 'remotes::install_version("arrow")' \
-    && Rscript -e 'remotes::install_version("dplyr")' \
-    && Rscript -e 'remotes::install_version("ggplot2")' \
-    && Rscript -e 'remotes::install_version("scales")' \
-    && Rscript -e 'remotes::install_version("shinycssloaders")' \
-    && Rscript -e 'remotes::install_version("cachem")' \
-    && Rscript -e 'remotes::install_version("DT")'
+    && Rscript -e 'remotes::install_version("dplyr", "1.2.1")' \
+    && Rscript -e 'remotes::install_version("ggplot2", "4.0.3")' \
+    && Rscript -e 'remotes::install_version("scales", "1.4.0")' \
+    && Rscript -e 'remotes::install_version("shinycssloaders", "1.1.0")' \
+    && Rscript -e 'remotes::install_version("cachem", "1.1.0")' \
+    && Rscript -e 'remotes::install_version("DT", "0.34.0")'
+
+ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
+
+RUN cd /.code-server \
+    && tar -xvf code-server.tar.gz \
+    && rm code-server.tar.gz \
+    && ln -s /.code-server/code-server-4.100.3-linux-amd64/bin/code-server /usr/bin/code-server \
+    && mkdir -p /.vscode/extensions
+
+RUN code-server --extensions-dir="/.vscode/extensions" --install-extension ms-python.python@2025.14.0 \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension ms-toolsai.jupyter@2025.4.1 \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension reditorsupport.r@2.8.6 \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension saoudrizwan.claude-dev@3.35.1

@@ -245,7 +245,7 @@ def gene_metadata_for_source(
     )
 
     var.insert(0, "gene_symbol_original", symbols.to_numpy())
-    var.index = pd.Index(unique_symbols.to_numpy(), name="gene_symbol")
+    var.index = pd.Index(unique_symbols.to_numpy(), name="gene_key")
     return var
 
 

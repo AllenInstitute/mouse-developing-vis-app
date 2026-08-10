@@ -1,8 +1,4 @@
 {
 	"version": 1,
-	"resource_class": "dedicated",
-	"machine_config": {
-		"instance_type": "c5a.2xlarge",
-		"spot": true
-	}
+	"resource_class": "medium"
 }

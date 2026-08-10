@@ -10,19 +10,28 @@
 		"pip": {
 			"packages": [
 				{
-					"name": "anndata"
+					"name": "anndata",
+					"version": "0.13.2"
 				},
 				{
-					"name": "h5py"
+					"name": "git+https://github.com/AllenInstitute/abc_atlas_access.git#egg=abc-atlas-access",
+					"version": "b16ee223d3466a57b30066973413ccc948c2e983"
 				},
 				{
-					"name": "numpy"
+					"name": "h5py",
+					"version": "3.16.0"
 				},
 				{
-					"name": "pandas"
+					"name": "numpy",
+					"version": "2.5.2"
 				},
 				{
-					"name": "scipy"
+					"name": "pandas",
+					"version": "3.0.5"
+				},
+				{
+					"name": "scipy",
+					"version": "1.18.0"
 				}
 			],
 			"options": {},
@@ -31,34 +40,63 @@
 		"rcran": {
 			"packages": [
 				{
-					"name": "shiny"
+					"name": "shiny",
+					"version": "1.14.0"
 				},
 				{
-					"name": "bslib"
+					"name": "bslib",
+					"version": "0.12.0"
 				},
 				{
 					"name": "arrow"
 				},
 				{
-					"name": "dplyr"
+					"name": "dplyr",
+					"version": "1.2.1"
 				},
 				{
-					"name": "ggplot2"
+					"name": "ggplot2",
+					"version": "4.0.3"
 				},
 				{
-					"name": "scales"
+					"name": "scales",
+					"version": "1.4.0"
 				},
 				{
-					"name": "shinycssloaders"
+					"name": "shinycssloaders",
+					"version": "1.1.0"
 				},
 				{
-					"name": "cachem"
+					"name": "cachem",
+					"version": "1.1.0"
 				},
 				{
-					"name": "DT"
+					"name": "DT",
+					"version": "0.34.0"
 				}
 			],
 			"use_rcache": true
+		},
+		"vscode": {
+			"packages": [
+				{
+					"name": "ms-python.python",
+					"version": "2025.14.0"
+				},
+				{
+					"name": "ms-toolsai.jupyter",
+					"version": "2025.4.1"
+				},
+				{
+					"name": "reditorsupport.r",
+					"version": "2.8.6"
+				},
+				{
+					"name": "saoudrizwan.claude-dev",
+					"version": "3.35.1"
+				}
+			],
+			"version": "4.100.3"
 		}
 	}
 }
