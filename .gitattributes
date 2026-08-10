@@ -1,0 +1,3 @@
+git add .gitattributes code/run
+git commit -m "Enforce Linux line endings for Code Ocean scripts"
+git push
