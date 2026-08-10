@@ -1,4 +1,4 @@
-# hash:sha256:01471538c35283404530de67b108fbf041dab33fc52cd9ad20f80b6e19adbca1
+# hash:sha256:281e4608dc782e26a3cbaa405e1f45b6878eacb9b4fb46d0e7bec52383e4a0cd
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -13,7 +13,7 @@ RUN --mount=type=secret,id=git-access-token \
     h5py==3.16.0 \
     numpy==2.5.2 \
     pandas==3.0.5 \
-    pyarrow \
+    pyarrow==25.0.1 \
     scipy==1.18.0 \
     -e git+https://github.com/AllenInstitute/abc_atlas_access.git@b16ee223d3466a57b30066973413ccc948c2e983#egg=abc-atlas-access
 
