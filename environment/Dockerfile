@@ -1,4 +1,4 @@
-# hash:sha256:281e4608dc782e26a3cbaa405e1f45b6878eacb9b4fb46d0e7bec52383e4a0cd
+# hash:sha256:4a1c4455342deaa177307baa6b158e738a751172d983e5ea399630aa4fc77b09
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -41,3 +41,7 @@ RUN code-server --extensions-dir="/.vscode/extensions" --install-extension ms-py
     && code-server --extensions-dir="/.vscode/extensions" --install-extension ms-toolsai.jupyter@2025.4.1 \
     && code-server --extensions-dir="/.vscode/extensions" --install-extension reditorsupport.r@2.8.6 \
     && code-server --extensions-dir="/.vscode/extensions" --install-extension saoudrizwan.claude-dev@3.35.1
+
+COPY postInstall /
+RUN --mount=type=secret,id=secrets . /run/secrets/secrets \
+    && /postInstall
