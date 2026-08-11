@@ -41,6 +41,9 @@ cpm_source <- bucket$path(
 statistics_source <- bucket$path(
   file.path(s3_prefix, "statistics", "mouse_gene_summary_statistics.csv")
 )
+value_sets_source <- bucket$path(
+  file.path(s3_prefix, "metadata", "value_sets.csv")
+)
 
 read_startup_data <- function() {
   tryCatch(
@@ -59,6 +62,10 @@ read_startup_data <- function() {
       ),
       statistics = arrow::read_csv_arrow(
         statistics_source,
+        as_data_frame = TRUE
+      ),
+      value_sets = arrow::read_csv_arrow(
+        value_sets_source,
         as_data_frame = TRUE
       )
     ),
@@ -83,6 +90,11 @@ gene_map <- as.data.frame(startup$gene_map, stringsAsFactors = FALSE)
 cpm_scaling <- as.data.frame(startup$cpm, stringsAsFactors = FALSE)
 gene_statistics <- as.data.frame(
   startup$statistics,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+value_sets <- as.data.frame(
+  startup$value_sets,
   stringsAsFactors = FALSE,
   check.names = FALSE
 )
@@ -183,6 +195,111 @@ gene_symbol_to_key <- setNames(
   gene_map$gene_column,
   gene_map$gene_symbol
 )
+
+# ============================================================
+# Value sets: deterministic order and colors
+# ============================================================
+
+required_value_set_columns <- c(
+  "label",
+  "field",
+  "color_hex_triplet",
+  "order"
+)
+missing_value_set_columns <- setdiff(
+  required_value_set_columns,
+  names(value_sets)
+)
+if (length(missing_value_set_columns) > 0) {
+  stop(
+    "value_sets.csv is missing: ",
+    paste(missing_value_set_columns, collapse = ", ")
+  )
+}
+
+value_sets <- value_sets |>
+  transmute(
+    label = trimws(as.character(label)),
+    field = trimws(as.character(field)),
+    color = trimws(as.character(color_hex_triplet)),
+    order = suppressWarnings(as.numeric(order))
+  ) |>
+  filter(
+    !is.na(label),
+    nzchar(label),
+    !is.na(field),
+    nzchar(field)
+  ) |>
+  arrange(field, order)
+
+normalize_value_set_field <- function(field) {
+  normalized <- tolower(trimws(as.character(field)))
+  normalized <- gsub("[^a-z0-9]+", "_", normalized)
+  normalized <- gsub("_label$", "", normalized)
+  normalized <- gsub("_alias$", "", normalized)
+  normalized <- gsub("^_|_$", "", normalized)
+  
+  aliases <- c(
+    "brain_region" = "region_of_interest",
+    "region" = "region_of_interest",
+    "roi" = "region_of_interest",
+    "age" = "donor_age",
+    "age_label" = "donor_age",
+    "developmental_age" = "donor_age",
+    "donor_sex" = "sex"
+  )
+  
+  if (normalized %in% names(aliases)) {
+    unname(aliases[[normalized]])
+  } else {
+    normalized
+  }
+}
+
+value_sets$field_key <- vapply(
+  value_sets$field,
+  normalize_value_set_field,
+  character(1)
+)
+
+value_set_for <- function(field, observed_values) {
+  observed <- unique(as.character(observed_values))
+  observed <- observed[!is.na(observed) & nzchar(observed)]
+  field_key <- normalize_value_set_field(field)
+  
+  specification <- value_sets |>
+    filter(.data$field_key == field_key) |>
+    arrange(order)
+  
+  if (nrow(specification) == 0) {
+    return(NULL)
+  }
+  
+  specification <- specification |>
+    distinct(label, .keep_all = TRUE)
+  
+  defined_levels <- specification$label
+  levels <- c(
+    defined_levels[defined_levels %in% observed],
+    observed[!observed %in% defined_levels]
+  )
+  
+  defined_colors <- setNames(
+    specification$color,
+    specification$label
+  )
+  colors <- setNames(
+    rep(NA_character_, length(levels)),
+    levels
+  )
+  matched <- intersect(levels, names(defined_colors))
+  colors[matched] <- defined_colors[matched]
+  
+  list(
+    levels = levels,
+    colors = colors
+  )
+}
 
 # ============================================================
 # Metadata fields and helpers
@@ -311,7 +428,11 @@ age_level_order <- function(x) {
 field_levels <- function(data, field) {
   values <- unique(as.character(data[[field]]))
   values <- values[!is.na(values) & nzchar(values)]
-  if (identical(field, age_field)) {
+  specification <- value_set_for(field, values)
+  
+  if (!is.null(specification)) {
+    specification$levels
+  } else if (identical(field, age_field)) {
     age_level_order(values)
   } else {
     sort(values)
@@ -328,33 +449,17 @@ factor_field <- function(data, field) {
 
 field_colors <- function(data, field) {
   levels <- field_levels(data, field)
-  color_column_candidates <- unique(c(
-    paste0(field, "_color"),
-    paste0(field, "_color_hex_triplet"),
-    paste0(gsub(" ", "_", field), "_color"),
-    "color_hex_triplet"
-  ))
-  color_column <- first_existing(
-    color_column_candidates,
-    names(data)
-  )
+  specification <- value_set_for(field, data[[field]])
   
-  if (!is.na(color_column)) {
-    lookup <- data |>
-      transmute(
-        level = as.character(.data[[field]]),
-        color = as.character(.data[[color_column]])
-      ) |>
-      filter(
-        !is.na(level), nzchar(level),
-        !is.na(color), grepl("^#", color)
-      ) |>
-      distinct(level, .keep_all = TRUE)
+  if (!is.null(specification)) {
+    colors <- specification$colors[levels]
+    missing <- is.na(colors) | !grepl("^#[0-9A-Fa-f]{6}$", colors)
     
-    colors <- setNames(lookup$color, lookup$level)
-    missing <- setdiff(levels, names(colors))
-    colors[missing] <- scales::hue_pal()(length(missing))
-    return(colors[levels])
+    if (any(missing)) {
+      colors[missing] <- scales::hue_pal()(sum(missing))
+    }
+    
+    return(colors)
   }
   
   setNames(scales::hue_pal()(length(levels)), levels)
@@ -363,9 +468,19 @@ field_colors <- function(data, field) {
 manual_color_scale <- function(data, field, aesthetic = "color") {
   colors <- field_colors(data, field)
   if (identical(aesthetic, "fill")) {
-    scale_fill_manual(values = colors, drop = TRUE, na.value = "#808080")
+    scale_fill_manual(
+      values = colors,
+      breaks = names(colors),
+      drop = TRUE,
+      na.value = "#808080"
+    )
   } else {
-    scale_color_manual(values = colors, drop = TRUE, na.value = "#808080")
+    scale_color_manual(
+      values = colors,
+      breaks = names(colors),
+      drop = TRUE,
+      na.value = "#808080"
+    )
   }
 }
 
@@ -423,7 +538,7 @@ app_header <- div(
     target = "_blank",
     tags$img(
       src = "allen_institute_logo.svg",
-      alt = app_title,
+      alt = "alleninstitute.org",
       class = "mouse-logo"
     )
   ),
@@ -779,6 +894,7 @@ server <- function(input, output, session) {
   loaded_gene <- reactiveVal(NULL)
   requested_gene <- reactiveVal(default_gene)
   gene_status_message <- reactiveVal("No gene retrieved yet.")
+  previous_dimension_plot_type <- reactiveVal(NULL)
   
   output$gene_statistics_table <- DT::renderDT({
     table_data <- gene_statistics
@@ -1066,8 +1182,31 @@ server <- function(input, output, session) {
       }
       if (length(dimension_choices) < 2) dimension_choices <- plot_fields
       
-      current_x <- isolate(input$x_variable)
-      if (!current_x %in% dimension_choices) current_x <- dimension_choices[[1]]
+      plot_type_changed <- !identical(
+        isolate(previous_dimension_plot_type()),
+        input$plot_type
+      )
+      
+      if (
+        plot_type_changed &&
+        input$plot_type %in% c("heatmap", "dot") &&
+        default_x %in% dimension_choices
+      ) {
+        current_x <- default_x
+      } else {
+        current_x <- isolate(input$x_variable)
+        if (
+          is.null(current_x) ||
+          length(current_x) == 0 ||
+          !current_x %in% dimension_choices
+        ) {
+          current_x <- if (default_x %in% dimension_choices) {
+            default_x
+          } else {
+            dimension_choices[[1]]
+          }
+        }
+      }
       
       updateSelectInput(
         session,
@@ -1077,12 +1216,27 @@ server <- function(input, output, session) {
       )
       
       second_choices <- setdiff(dimension_choices, current_x)
-      current_second <- isolate(input$second_dimension)
-      if (!current_second %in% second_choices) {
-        current_second <- if (region_field %in% second_choices) {
-          region_field
-        } else {
-          second_choices[[1]]
+      
+      if (
+        plot_type_changed &&
+        input$plot_type %in% c("heatmap", "dot") &&
+        default_second %in% second_choices
+      ) {
+        current_second <- default_second
+      } else {
+        current_second <- isolate(input$second_dimension)
+        if (
+          is.null(current_second) ||
+          length(current_second) == 0 ||
+          !current_second %in% second_choices
+        ) {
+          current_second <- if (default_second %in% second_choices) {
+            default_second
+          } else if (region_field %in% second_choices) {
+            region_field
+          } else {
+            second_choices[[1]]
+          }
         }
       }
       
@@ -1092,6 +1246,8 @@ server <- function(input, output, session) {
         choices = second_choices,
         selected = current_second
       )
+      
+      previous_dimension_plot_type(input$plot_type)
     },
     ignoreInit = FALSE
   )
@@ -1319,17 +1475,39 @@ server <- function(input, output, session) {
         )
       
     } else if (settings$plot_type == "dot") {
-      plot_data <- summarized_data()
+      plot_data <- summarized_data() |>
+        mutate(
+          size_expression = pmax(
+            if (settings$log_scale) {
+              expression
+            } else {
+              log1p(expression)
+            },
+            0.5
+          )
+        )
+      
+      maximum_size_expression <- max(
+        plot_data$size_expression,
+        na.rm = TRUE
+      )
+      
       ggplot(
         plot_data,
         aes(
           x = .data[[settings$x_variable]],
           y = .data[[settings$second_dimension]],
-          color = expression
+          color = expression,
+          size = size_expression
         )
       ) +
-        geom_point(size = 3.2, alpha = 0.9) +
+        geom_point(alpha = 0.9) +
         scale_color_viridis_c(option = "C", name = y_label) +
+        scale_size_area(
+          name = "ln(CPM + 1)",
+          limits = c(0, maximum_size_expression),
+          max_size = 9
+        ) +
         labs(x = settings$x_variable, y = settings$second_dimension) +
         theme_minimal(base_size = 11) +
         theme(axis.text.x = element_text(angle = 55, hjust = 1))
