@@ -1,4 +1,4 @@
-# hash:sha256:53724d326db29f4cbe435f7cfc27ba12f145b54e93309d080b777f1e3d2daa5c
+# hash:sha256:3824eca4e65a6af463f381799e66cb9ed98e3daf88293bd56fc4dd11a6733a9a
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -9,9 +9,11 @@ COPY git-ask-pass /
 ENV LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
 
 RUN conda install -y \
+        libcurl \
         libgcc-ng==16.1.0 \
         libstdcxx-ng==16.1.0 \
         r-arrow==21.0.0 \
+        r-curl \
     && conda clean -ya
 
 RUN --mount=type=secret,id=git-access-token \

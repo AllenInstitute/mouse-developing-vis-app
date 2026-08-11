@@ -11,6 +11,9 @@
 		"conda": {
 			"packages": [
 				{
+					"name": "libcurl"
+				},
+				{
 					"name": "libgcc-ng",
 					"version": "16.1.0"
 				},
@@ -21,6 +24,9 @@
 				{
 					"name": "r-arrow",
 					"version": "21.0.0"
+				},
+				{
+					"name": "r-curl"
 				}
 			]
 		},
