@@ -8,6 +8,22 @@
 		"mount_secrets": true
 	},
 	"installers": {
+		"conda": {
+			"packages": [
+				{
+					"name": "libgcc-ng",
+					"version": "16.1.0"
+				},
+				{
+					"name": "libstdcxx-ng",
+					"version": "16.1.0"
+				},
+				{
+					"name": "r-arrow",
+					"version": "21.0.0"
+				}
+			]
+		},
 		"pip": {
 			"packages": [
 				{
@@ -51,9 +67,6 @@
 				{
 					"name": "bslib",
 					"version": "0.12.0"
-				},
-				{
-					"name": "arrow"
 				},
 				{
 					"name": "dplyr",
@@ -111,5 +124,11 @@
 			],
 			"version": "4.100.3"
 		}
-	}
+	},
+	"env_variables": [
+		{
+			"name": "LD_LIBRARY_PATH",
+			"value": "/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu"
+		}
+	]
 }

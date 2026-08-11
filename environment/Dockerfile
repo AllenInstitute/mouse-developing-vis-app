@@ -1,10 +1,18 @@
-# hash:sha256:b9515fb0d41418018680822cc31640b7a036406f4b46dd10b2b6e0d356686c74
+# hash:sha256:c6b27c83876adb75b955c5e0f0a96a87fe5cb6b28e8dcf6ee883ffba37be790b
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
+
+ENV LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
+
+RUN conda install -y \
+        libgcc-ng==16.1.0 \
+        libstdcxx-ng==16.1.0 \
+        r-arrow==21.0.0 \
+    && conda clean -ya
 
 RUN --mount=type=secret,id=git-access-token \
     GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
@@ -21,7 +29,6 @@ ARG RCACHE_OPTIONS
 RUN echo $RCACHE_OPTIONS >> $(Rscript -e 'cat(R.home())')/etc/Rprofile.site
 RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
     && Rscript -e 'remotes::install_version("bslib", "0.12.0")' \
-    && Rscript -e 'remotes::install_version("arrow")' \
     && Rscript -e 'remotes::install_version("dplyr", "1.2.1")' \
     && Rscript -e 'remotes::install_version("ggplot2", "4.0.3")' \
     && Rscript -e 'remotes::install_version("scales", "1.4.0")' \

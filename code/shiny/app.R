@@ -218,7 +218,7 @@ if (is.na(cluster_field)) {
   stop("No cluster field was found in obs_metadata.parquet.")
 }
 
-preferred_fields <- unique(na.omit(c(
+preferred_fields <- unique(c(
   class_field,
   subclass_field,
   cluster_field,
@@ -232,7 +232,12 @@ preferred_fields <- unique(na.omit(c(
   "donor_id",
   "developmental_compartment",
   "sample_type"
-)))
+))
+
+preferred_fields <- preferred_fields[
+  !is.na(preferred_fields) &
+    preferred_fields %in% names(metadata)
+]
 
 categorical_fields <- preferred_fields[vapply(
   metadata[preferred_fields],
@@ -258,19 +263,42 @@ cell_type_fields <- unique(na.omit(c(
 parse_age <- function(x) {
   text <- toupper(trimws(as.character(x)))
   out <- suppressWarnings(as.numeric(text))
-
+  
   embryonic <- grepl("^E\\s*[0-9]", text)
   postnatal <- grepl("^P\\s*[0-9]", text)
-
+  
   extract_number <- function(values) {
     suppressWarnings(as.numeric(
       sub(".*?(-?[0-9]+(?:\\.[0-9]+)?).*", "\\1", values)
     ))
   }
-
+  
   out[embryonic] <- extract_number(text[embryonic]) - 100
   out[postnatal] <- extract_number(text[postnatal])
   out
+}
+
+capped_age_positions <- function(x, maximum_step = 3) {
+  labels <- age_level_order(x)
+  raw_positions <- parse_age(labels)
+  
+  valid <- is.finite(raw_positions)
+  labels <- labels[valid]
+  raw_positions <- raw_positions[valid]
+  
+  if (length(raw_positions) == 0) {
+    return(setNames(numeric(), character()))
+  }
+  
+  if (length(raw_positions) == 1) {
+    return(setNames(0, labels))
+  }
+  
+  raw_steps <- diff(raw_positions)
+  capped_steps <- pmin(raw_steps, maximum_step)
+  
+  positions <- c(0, cumsum(capped_steps))
+  setNames(positions, labels)
 }
 
 age_level_order <- function(x) {
@@ -310,7 +338,7 @@ field_colors <- function(data, field) {
     color_column_candidates,
     names(data)
   )
-
+  
   if (!is.na(color_column)) {
     lookup <- data |>
       transmute(
@@ -322,13 +350,13 @@ field_colors <- function(data, field) {
         !is.na(color), grepl("^#", color)
       ) |>
       distinct(level, .keep_all = TRUE)
-
+    
     colors <- setNames(lookup$color, lookup$level)
     missing <- setdiff(levels, names(colors))
     colors[missing] <- scales::hue_pal()(length(missing))
     return(colors[levels])
   }
-
+  
   setNames(scales::hue_pal()(length(levels)), levels)
 }
 
@@ -369,8 +397,17 @@ default_gene <- if ("Reln" %in% available_genes) {
 } else {
   available_genes[[1]]
 }
-default_x <- if (!is.na(subclass_field)) subclass_field else cluster_field
-default_second <- region_field
+default_x <- if ("donor_age" %in% plot_fields) {
+  "donor_age"
+} else {
+  age_field
+}
+
+default_second <- if (!is.na(subclass_field)) {
+  subclass_field
+} else {
+  cluster_field
+}
 default_facet <- if (!is.na(subclass_field)) subclass_field else cluster_field
 default_color <- region_field
 
@@ -382,10 +419,10 @@ app_header <- div(
   class = "mouse-header",
   tags$a(
     class = "mouse-logo-link",
-    href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+    href = "https://alleninstitute.org/",
     target = "_blank",
     tags$img(
-      src = "Developing_Mouse_Visual_Cortex_logo.png",
+      src = "allen_institute_logo.svg",
       alt = app_title,
       class = "mouse-logo"
     )
@@ -415,13 +452,13 @@ ui <- page_sidebar(
     primary = "#214E68",
     success = "#4B9B58"
   ),
-
+  
   tags$head(
     tags$title(app_title),
     tags$link(
       rel = "icon",
       type = "image/png",
-      href = "Developing_Mouse_Visual_Cortex_logo.png"
+      href = "allen_institute_logo.svg"
     ),
     tags$style(HTML(
       "
@@ -436,6 +473,24 @@ ui <- page_sidebar(
         position: relative; display: flex; align-items: center;
         justify-content: space-between; width: 100%; height: 64px;
         padding: 0 16px;
+      }
+      .mouse-header-spacer {
+        width: 210px;
+      }
+      
+      .sidebar-logo-container {
+        width: 100%;
+        text-align: center;
+        margin: 0 0 7px 0;
+      }
+      
+      .sidebar-logo {
+        display: block;
+        width: 100%;
+        max-width: 345px;
+        max-height: 250px;
+        object-fit: contain;
+        margin: 0 auto;
       }
       .mouse-logo-link { width: 180px; display: flex; align-items: center; }
       .mouse-logo { height: 52px; max-width: 175px; object-fit: contain; }
@@ -474,6 +529,13 @@ ui <- page_sidebar(
       .compact-controls .selectize-input {
         min-height: 28px !important; font-size: .78rem !important;
       }
+      .repeat-plot-note {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.67rem;
+        line-height: 1.1;
+        text-align: center;
+        margin: 3px 0 4px 0;
+      }
       #filter_values + .selectize-control .selectize-input,
       #filter_values + .selectize-control .selectize-dropdown,
       #filter_values-selectized + .selectize-dropdown {
@@ -508,13 +570,28 @@ ui <- page_sidebar(
         .mouse-header-links { width: 80px; }
         .mouse-logo-link { width: 110px; }
         .mouse-logo { max-width: 105px; }
+        .mouse-header-spacer {
+          width: 80px;
+        }
       }
       "
     ))
   ),
-
+  
   sidebar = sidebar(
     width = 320,
+    div(
+      class = "sidebar-logo-container",
+      tags$a(
+        href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+        target = "_blank",
+        tags$img(
+          src = "Developing_Mouse_Visual_Cortex_logo.png",
+          alt = app_title,
+          class = "sidebar-logo"
+        )
+      )
+    ),
     helpText(
       "Choose a gene, retrieve its data, select plot options, and generate the plot."
     ),
@@ -645,6 +722,10 @@ ui <- page_sidebar(
         class = "btn-primary",
         width = "100%"
       ),
+      div(
+        class = "repeat-plot-note",
+        "If nothing happens, press ^ again."
+      ),
       actionButton(
         "reset_defaults",
         "Reset plot options",
@@ -653,7 +734,7 @@ ui <- page_sidebar(
       )
     )
   ),
-
+  
   navset_card_tab(
     id = "main_tabs",
     nav_panel(
@@ -698,31 +779,44 @@ server <- function(input, output, session) {
   loaded_gene <- reactiveVal(NULL)
   requested_gene <- reactiveVal(default_gene)
   gene_status_message <- reactiveVal("No gene retrieved yet.")
-
+  
   output$gene_statistics_table <- DT::renderDT({
     table_data <- gene_statistics
+    
     numeric_columns <- names(table_data)[vapply(
       table_data,
       is.numeric,
       logical(1)
     )]
-
+    
+    first_numeric_index <- if (length(numeric_columns) > 0) {
+      match(numeric_columns[[1]], names(table_data)) - 1L
+    } else {
+      0L
+    }
+    
     table <- DT::datatable(
       table_data,
       rownames = FALSE,
       filter = "top",
-      selection = list(mode = "single", target = "row"),
+      selection = list(
+        mode = "single",
+        target = "row"
+      ),
       options = list(
         pageLength = 10,
         lengthMenu = c(10, 20, 50, 100),
         scrollX = TRUE,
         autoWidth = TRUE,
         stateSave = FALSE,
-        searchHighlight = TRUE
+        searchHighlight = TRUE,
+        order = list(
+          list(first_numeric_index, "desc")
+        )
       ),
       class = "compact stripe hover"
     )
-
+    
     if (length(numeric_columns) > 0) {
       table <- DT::formatRound(
         table,
@@ -730,16 +824,17 @@ server <- function(input, output, session) {
         digits = 3
       )
     }
+    
     table
   }, server = TRUE)
-
+  
   observeEvent(input$gene_statistics_table_rows_selected, {
     selected_row <- input$gene_statistics_table_rows_selected
     req(length(selected_row) == 1)
-
+    
     selected_gene <- gene_statistics[[statistics_gene_column]][selected_row]
     req(length(selected_gene) == 1, !is.na(selected_gene), nzchar(selected_gene))
-
+    
     if (selected_gene %in% available_genes) {
       requested_gene(selected_gene)
       updateSelectizeInput(
@@ -759,7 +854,7 @@ server <- function(input, output, session) {
       )
     }
   }, ignoreInit = TRUE)
-
+  
   session$onFlushed(function() {
     updateSelectizeInput(
       session,
@@ -769,7 +864,7 @@ server <- function(input, output, session) {
       server = TRUE
     )
   }, once = TRUE)
-
+  
   observeEvent(input$gene, {
     if (
       length(input$gene) == 1 &&
@@ -779,17 +874,17 @@ server <- function(input, output, session) {
       requested_gene(input$gene)
     }
   }, ignoreInit = TRUE)
-
+  
   read_gene <- function(gene_symbol) {
     cache_key <- make_cache_key(gene_symbol)
     cached <- gene_cache$get(cache_key, missing = NULL)
     if (!is.null(cached)) return(cached)
-
+    
     gene_key <- unname(gene_symbol_to_key[[gene_symbol]])
     if (is.null(gene_key) || is.na(gene_key)) {
       stop("No gene partition key was found for: ", gene_symbol)
     }
-
+    
     gene_source <- bucket$path(
       file.path(
         s3_prefix,
@@ -797,7 +892,7 @@ server <- function(input, output, session) {
         paste0("gene=", gene_key)
       )
     )
-
+    
     # open_dataset() deliberately supports one or many Parquet files in the
     # selected gene partition.
     gene_counts <- arrow::open_dataset(
@@ -812,11 +907,11 @@ server <- function(input, output, session) {
         sample_id = as.character(sample_id),
         summed_counts = as.numeric(summed_counts)
       )
-
+    
     if (nrow(gene_counts) == 0) {
       stop("No count data were found for gene: ", gene_symbol)
     }
-
+    
     joined <- metadata |>
       inner_join(gene_counts, by = "sample_id") |>
       filter(
@@ -827,20 +922,20 @@ server <- function(input, output, session) {
       mutate(
         CPM = summed_counts * CPM_scaling_factor
       )
-
+    
     if (nrow(joined) == 0) {
       stop("Gene data were found, but no rows matched valid metadata and CPM scaling.")
     }
-
+    
     gene_cache$set(cache_key, joined)
     joined
   }
-
+  
   observeEvent(input$get_gene_data, {
     gene_to_load <- requested_gene()
     req(gene_to_load %in% available_genes)
     gene_status_message(paste("Retrieving", gene_to_load, "..."))
-
+    
     tryCatch(
       {
         loaded <- withProgress(
@@ -880,9 +975,9 @@ server <- function(input, output, session) {
       }
     )
   })
-
+  
   output$gene_status <- renderText(gene_status_message())
-
+  
   observeEvent(input$filter_field, {
     if (is.null(input$filter_field) || input$filter_field == "none") {
       updateSelectizeInput(
@@ -894,7 +989,7 @@ server <- function(input, output, session) {
       )
       return()
     }
-
+    
     choices <- field_levels(metadata, input$filter_field)
     updateSelectizeInput(
       session,
@@ -904,7 +999,7 @@ server <- function(input, output, session) {
       server = TRUE
     )
   }, ignoreInit = FALSE)
-
+  
   control_metadata <- reactive({
     if (
       is.null(input$filter_field) ||
@@ -913,7 +1008,7 @@ server <- function(input, output, session) {
     ) {
       return(metadata)
     }
-
+    
     out <- metadata |>
       filter(
         as.character(.data[[input$filter_field]]) %in%
@@ -921,7 +1016,7 @@ server <- function(input, output, session) {
       )
     if (nrow(out) == 0) metadata else out
   })
-
+  
   observeEvent(control_metadata(), {
     data <- control_metadata()
     facet_choices <- fields_within_limit(
@@ -934,16 +1029,16 @@ server <- function(input, output, session) {
       plot_fields,
       15
     )
-
+    
     if (length(facet_choices) == 0) facet_choices <- default_facet
     if (length(color_choices) == 0) color_choices <- default_color
-
+    
     current_facet <- isolate(input$facet_variable)
     if (!current_facet %in% facet_choices) current_facet <- facet_choices[[1]]
-
+    
     current_color <- isolate(input$color_variable)
     if (!current_color %in% color_choices) current_color <- color_choices[[1]]
-
+    
     updateSelectInput(
       session,
       "facet_variable",
@@ -957,30 +1052,30 @@ server <- function(input, output, session) {
       selected = current_color
     )
   }, ignoreInit = FALSE)
-
+  
   observeEvent(
     list(input$plot_type, input$x_variable, control_metadata()),
     {
       req(input$plot_type)
       data <- control_metadata()
-
+      
       dimension_choices <- if (input$plot_type %in% c("heatmap", "dot")) {
         plot_fields
       } else {
         fields_within_limit(data, plot_fields, 30)
       }
       if (length(dimension_choices) < 2) dimension_choices <- plot_fields
-
+      
       current_x <- isolate(input$x_variable)
       if (!current_x %in% dimension_choices) current_x <- dimension_choices[[1]]
-
+      
       updateSelectInput(
         session,
         "x_variable",
         choices = dimension_choices,
         selected = current_x
       )
-
+      
       second_choices <- setdiff(dimension_choices, current_x)
       current_second <- isolate(input$second_dimension)
       if (!current_second %in% second_choices) {
@@ -990,7 +1085,7 @@ server <- function(input, output, session) {
           second_choices[[1]]
         }
       }
-
+      
       updateSelectInput(
         session,
         "second_dimension",
@@ -1000,7 +1095,7 @@ server <- function(input, output, session) {
     },
     ignoreInit = FALSE
   )
-
+  
   observeEvent(input$reset_defaults, {
     updateSelectInput(session, "filter_field", selected = "none")
     updateSelectizeInput(
@@ -1021,7 +1116,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "x_variable", selected = default_x)
     updateSelectInput(session, "second_dimension", selected = default_second)
   })
-
+  
   observeEvent(input$make_plot, {
     bslib::nav_select(
       id = "main_tabs",
@@ -1029,7 +1124,7 @@ server <- function(input, output, session) {
       session = session
     )
   }, ignoreInit = TRUE)
-
+  
   plot_settings <- eventReactive(input$make_plot, {
     req(gene_data(), loaded_gene(), input$plot_type)
     list(
@@ -1047,12 +1142,12 @@ server <- function(input, output, session) {
       second_dimension = input$second_dimension
     )
   }, ignoreInit = TRUE)
-
+  
   filtered_data <- reactive({
     settings <- plot_settings()
     data <- gene_data()
     req(data)
-
+    
     if (
       !is.null(settings$filter_field) &&
       settings$filter_field != "none" &&
@@ -1064,16 +1159,16 @@ server <- function(input, output, session) {
             as.character(settings$filter_values)
         )
     }
-
+    
     if (settings$omit_zero_values) {
       data <- data |> filter(summed_counts > 0)
     }
-
+    
     validate(need(
       nrow(data) >= 2,
       "Fewer than two observations remain after filtering."
     ))
-
+    
     data |>
       mutate(
         plotted_expression = if (settings$log_scale) {
@@ -1083,7 +1178,7 @@ server <- function(input, output, session) {
         }
       )
   })
-
+  
   summarized_data <- reactive({
     settings <- plot_settings()
     data <- filtered_data()
@@ -1092,10 +1187,10 @@ server <- function(input, output, session) {
       settings$x_variable != settings$second_dimension,
       "Choose two different plot dimensions."
     ))
-
+    
     data <- factor_field(data, settings$x_variable)
     data <- factor_field(data, settings$second_dimension)
-
+    
     out <- data |>
       filter(
         !is.na(.data[[settings$x_variable]]),
@@ -1110,26 +1205,34 @@ server <- function(input, output, session) {
         expression = mean(plotted_expression, na.rm = TRUE),
         .groups = "drop"
       )
-
+    
     validate(need(nrow(out) > 0, "No valid groups remain for this plot."))
     out
   })
-
+  
   output$expression_plot <- renderPlot({
     settings <- plot_settings()
     data <- filtered_data()
-
+    
     y_label <- if (settings$log_scale) "ln(CPM + 1)" else "Counts per million"
-
+    
     if (settings$plot_type == "trajectory") {
       data <- factor_field(data, settings$facet_variable)
       data <- factor_field(data, settings$color_variable)
-      data$progression_value <- parse_age(
-        data[[settings$progression_variable]]
+      age_position_lookup <- capped_age_positions(
+        data[[settings$progression_variable]],
+        maximum_step = 3
       )
-      age_labels <- age_level_order(data[[settings$progression_variable]])
-      age_breaks <- parse_age(age_labels)
-
+      
+      age_labels <- names(age_position_lookup)
+      age_breaks <- unname(age_position_lookup)
+      
+      data$progression_value <- unname(
+        age_position_lookup[
+          as.character(data[[settings$progression_variable]])
+        ]
+      )
+      
       plot_data <- data |>
         filter(
           is.finite(progression_value),
@@ -1137,7 +1240,7 @@ server <- function(input, output, session) {
           !is.na(.data[[settings$facet_variable]]),
           !is.na(.data[[settings$color_variable]])
         )
-
+      
       validate(
         need(nrow(plot_data) >= 2, "Too few observations remain."),
         need(
@@ -1145,7 +1248,7 @@ server <- function(input, output, session) {
           "At least two ages are required."
         )
       )
-
+      
       plot <- ggplot(
         plot_data,
         aes(
@@ -1154,7 +1257,7 @@ server <- function(input, output, session) {
           color = .data[[settings$color_variable]]
         )
       )
-
+      
       if (settings$show_points) {
         plot <- plot + geom_point(alpha = 0.42, size = 1.0)
       }
@@ -1175,7 +1278,7 @@ server <- function(input, output, session) {
           na.rm = TRUE
         )
       }
-
+      
       plot +
         manual_color_scale(plot_data, settings$color_variable, "color") +
         scale_x_continuous(breaks = age_breaks, labels = age_labels) +
@@ -1195,7 +1298,7 @@ server <- function(input, output, session) {
           strip.text = element_text(face = "bold", size = 9),
           legend.position = "bottom"
         )
-
+      
     } else if (settings$plot_type == "heatmap") {
       plot_data <- summarized_data()
       ggplot(
@@ -1214,7 +1317,7 @@ server <- function(input, output, session) {
           panel.grid = element_blank(),
           axis.text.x = element_text(angle = 55, hjust = 1)
         )
-
+      
     } else if (settings$plot_type == "dot") {
       plot_data <- summarized_data()
       ggplot(
@@ -1230,7 +1333,7 @@ server <- function(input, output, session) {
         labs(x = settings$x_variable, y = settings$second_dimension) +
         theme_minimal(base_size = 11) +
         theme(axis.text.x = element_text(angle = 55, hjust = 1))
-
+      
     } else {
       data <- factor_field(data, settings$x_variable)
       data <- factor_field(data, settings$second_dimension)
@@ -1246,12 +1349,12 @@ server <- function(input, output, session) {
         )))) |>
         filter(n() >= 2) |>
         ungroup()
-
+      
       validate(need(
         nrow(plot_data) >= 2,
         "No violin group has at least two observations."
       ))
-
+      
       ggplot(
         plot_data,
         aes(
@@ -1302,7 +1405,7 @@ server <- function(input, output, session) {
         )
     }
   }, res = 96, execOnResize = TRUE)
-
+  
   output$plot_title <- renderText({
     if (is.null(loaded_gene())) {
       return("Retrieve a gene, then generate a plot")
@@ -1313,7 +1416,7 @@ server <- function(input, output, session) {
     } else {
       ""
     }
-
+    
     if (settings$plot_type == "trajectory") {
       paste0(
         loaded_gene(),
