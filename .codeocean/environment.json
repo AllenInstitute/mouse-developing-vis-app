@@ -80,10 +80,12 @@
 					"version": "0.34.0"
 				},
 				{
-					"name": "renv"
+					"name": "renv",
+					"version": "1.2.4"
 				},
 				{
-					"name": "rsconnect"
+					"name": "rsconnect",
+					"version": "1.10.1"
 				}
 			],
 			"use_rcache": true
