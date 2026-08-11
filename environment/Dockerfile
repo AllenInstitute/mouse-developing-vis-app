@@ -1,4 +1,4 @@
-# hash:sha256:4a1c4455342deaa177307baa6b158e738a751172d983e5ea399630aa4fc77b09
+# hash:sha256:0ceb32c37540ea4f8e97db9817dd05292b5e4fee14001ceb7c8b082f8b97aaae
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -27,7 +27,9 @@ RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
     && Rscript -e 'remotes::install_version("scales", "1.4.0")' \
     && Rscript -e 'remotes::install_version("shinycssloaders", "1.1.0")' \
     && Rscript -e 'remotes::install_version("cachem", "1.1.0")' \
-    && Rscript -e 'remotes::install_version("DT", "0.34.0")'
+    && Rscript -e 'remotes::install_version("DT", "0.34.0")' \
+    && Rscript -e 'remotes::install_version("renv")' \
+    && Rscript -e 'remotes::install_version("rsconnect")'
 
 ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 
