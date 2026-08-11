@@ -1,4 +1,4 @@
-# hash:sha256:c6b27c83876adb75b955c5e0f0a96a87fe5cb6b28e8dcf6ee883ffba37be790b
+# hash:sha256:53724d326db29f4cbe435f7cfc27ba12f145b54e93309d080b777f1e3d2daa5c
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -30,7 +30,7 @@ RUN echo $RCACHE_OPTIONS >> $(Rscript -e 'cat(R.home())')/etc/Rprofile.site
 RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
     && Rscript -e 'remotes::install_version("bslib", "0.12.0")' \
     && Rscript -e 'remotes::install_version("dplyr", "1.2.1")' \
-    && Rscript -e 'remotes::install_version("ggplot2", "4.0.3")' \
+    && Rscript -e 'remotes::install_version("ggplot2", "3.5.2")' \
     && Rscript -e 'remotes::install_version("scales", "1.4.0")' \
     && Rscript -e 'remotes::install_version("shinycssloaders", "1.1.0")' \
     && Rscript -e 'remotes::install_version("cachem", "1.1.0")' \
