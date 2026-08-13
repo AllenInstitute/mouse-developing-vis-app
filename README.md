@@ -1,6 +1,6 @@
 # mouse-aging-app
 
-Code and reproducible workflows for building a pseudobulk gene-expression resource and interactive viewer for the Developing Mouse Visual Cortex dataset from the Allen Brain Cell Atlas.
+Code and reproducible workflows for building a pseudobulk gene-expression resource and interactive viewer for the Developing Mouse Visual Cortex dataset from the Allen Brain Cell Atlas. **You can access the app [HERE](https://molgen-shiny.org/dev_mouse_gene_exploration/).**
 
 ## Current workflow
 
