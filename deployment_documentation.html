@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rebuilding and Deploying the Developing Mouse Visual Cortex Gene Expression Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: sans-serif; margin: 0; display: flex; line-height: 1.6; background: #fff; color: #333; }
+    .sidebar { width: 310px; min-width: 260px; background: #B3C1CD; padding: 20px; overflow-y: auto; height: 100vh; position: sticky; top: 0; border-right: 1px solid #aaa; }
+    .sidebar-logo { display: block; width: 210px; max-height: 135px; object-fit: contain; margin: 8px auto 14px; }
+    .sidebar ul { list-style: none; padding: 0; margin: 16px 0 0; }
+    .sidebar li { margin-bottom: 6px; }
+    .sidebar a { text-decoration: none; color: #003057; display: block; padding: 2px 4px; border-radius: 3px; }
+    .sidebar a:hover { background: rgba(0,48,87,.1); }
+    .sidebar-h2 { font-weight: 700; font-size: .96rem; margin-top: 10px; }
+    .sidebar-h3 { font-size: .86rem; padding-left: 16px; }
+    .sidebar-h4 { font-size: .8rem; padding-left: 30px; }
+    .main-content { flex: 1; padding: 22px 42px 60px; overflow-y: auto; height: 100vh; }
+    h1, h2, h3, h4 { color: #003057; scroll-margin-top: 20px; margin-top: 26px; margin-bottom: 14px; padding-bottom: .3em; border-bottom: 1px solid #e4e8ec; }
+    h1 { border-bottom-width: 2px; font-size: 2rem; }
+    h2 { font-size: 1.55rem; }
+    h3 { font-size: 1.22rem; }
+    h4 { font-size: 1.02rem; border-bottom: none; }
+    p { margin-bottom: 14px; }
+    ul, ol { margin: 0 0 16px 25px; }
+    li { margin-bottom: 5px; }
+    a { color: #0366d6; }
+    hr { height: 5px; border: 0; background: #003057; width: 52%; margin: 28px auto 24px 0; }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 85%; padding: .18em .38em; background: rgba(27,31,35,.06); border-radius: 3px; }
+    pre { padding: 16px; overflow: auto; font-size: 84%; line-height: 1.45; background: #f6f8fa; border: 1px solid #e3e7eb; border-radius: 5px; margin: 0 0 17px; }
+    pre code { padding: 0; background: transparent; }
+    .page-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #e4e8ec; padding-bottom: 12px; }
+    .page-header h1 { margin: 0; padding: 0; border: 0; flex: 1; }
+    .header-logo { height: 58px; max-width: 160px; object-fit: contain; }
+    .lead { font-size: 1.04rem; color: #445; margin-top: 18px; }
+    .note, .warning, .success { padding: 11px 15px; margin: 15px 0; border-radius: 0 5px 5px 0; }
+    .note { border-left: 4px solid #0dc5c1; background: #eefafa; }
+    .warning { border-left: 4px solid #d9822b; background: #fff7ed; }
+    .success { border-left: 4px solid #27ae60; background: #effaf3; }
+    .checklist { list-style: none; margin-left: 0; }
+    .checklist li::before { content: "☐"; color: #003057; font-weight: 700; margin-right: 8px; }
+    .file-card { border: 1px solid #d8dee4; border-radius: 6px; padding: 13px 16px; margin: 13px 0; background: #fbfcfd; }
+    .file-card h4 { margin: 0 0 8px; padding: 0; }
+    .step { display: inline-block; min-width: 28px; height: 28px; line-height: 28px; margin-right: 8px; text-align: center; color: white; background: #003057; border-radius: 50%; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0 18px; }
+    th, td { border: 1px solid #d0d7de; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef2f5; color: #003057; }
+    .small { font-size: .88rem; color: #59636e; }
+    @media (max-width: 900px) { body { display: block; } .sidebar { position: relative; width: 100%; height: auto; } .main-content { height: auto; padding: 20px; } }
+  </style>
+</head>
+<body>
+  <nav class="sidebar">
+    <h2 style="margin-top:0; border:0;">Deployment Guide</h2>
+    <img class="sidebar-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex logo">
+    <ul>
+      <li class="sidebar-h2"><a href="#overview">Overview</a></li>
+      <li class="sidebar-h3"><a href="#workflow">End-to-end workflow</a></li>
+      <li class="sidebar-h3"><a href="#structure">Repository structure</a></li>
+      <li class="sidebar-h2"><a href="#section-1">1. Set up Code Ocean Capsule</a></li>
+      <li class="sidebar-h3"><a href="#github-repo">Create GitHub repository</a></li>
+      <li class="sidebar-h3"><a href="#clone-capsule">Clone into Code Ocean</a></li>
+      <li class="sidebar-h3"><a href="#environment">Configure environment</a></li>
+      <li class="sidebar-h3"><a href="#paths">Use /data and /results</a></li>
+      <li class="sidebar-h2"><a href="#section-2">2. Convert and format back-end files</a></li>
+      <li class="sidebar-h3"><a href="#pseudobulk-script">Create pseudobulk H5AD</a></li>
+      <li class="sidebar-h3"><a href="#capture-h5ad">Capture H5AD Data Asset</a></li>
+      <li class="sidebar-h3"><a href="#parquet-script">Create Parquet and metadata</a></li>
+      <li class="sidebar-h3"><a href="#statistics-script">Create statistics table</a></li>
+      <li class="sidebar-h3"><a href="#valuesets-script">Create value sets</a></li>
+      <li class="sidebar-h3"><a href="#validate-backend">Validate outputs</a></li>
+      <li class="sidebar-h2"><a href="#section-3">3. Publish back-end files to AWS</a></li>
+      <li class="sidebar-h3"><a href="#aws-cli">Configure AWS CLI</a></li>
+      <li class="sidebar-h3"><a href="#aws-upload">Upload and verify</a></li>
+      <li class="sidebar-h2"><a href="#section-4">4. Build and test the Shiny app</a></li>
+      <li class="sidebar-h3"><a href="#app-files">Application files</a></li>
+      <li class="sidebar-h3"><a href="#app-data">How the app reads data</a></li>
+      <li class="sidebar-h3"><a href="#renv">Create renv.lock</a></li>
+      <li class="sidebar-h3"><a href="#local-test">Test locally</a></li>
+      <li class="sidebar-h3"><a href="#code-ocean-test">Test in Code Ocean</a></li>
+      <li class="sidebar-h2"><a href="#section-5">5. Deploy to Posit Connect</a></li>
+      <li class="sidebar-h3"><a href="#first-deploy">Initial deployment</a></li>
+      <li class="sidebar-h3"><a href="#connect-validate">Validate Connect</a></li>
+      <li class="sidebar-h2"><a href="#section-6">6. Configure GitHub auto-deployment</a></li>
+      <li class="sidebar-h3"><a href="#github-secret">Add repository secret</a></li>
+      <li class="sidebar-h3"><a href="#workflow-file">Deployment workflow</a></li>
+      <li class="sidebar-h3"><a href="#dependency-updates">Dependency updates</a></li>
+      <li class="sidebar-h2"><a href="#section-7">7. Publish documentation</a></li>
+      <li class="sidebar-h3"><a href="#pages">GitHub Pages</a></li>
+      <li class="sidebar-h2"><a href="#maintenance">Maintenance checklist</a></li>
+      <li class="sidebar-h2"><a href="#troubleshooting">Troubleshooting</a></li>
+      <li class="sidebar-h2"><a href="#references">References</a></li>
+    </ul>
+  </nav>
+
+  <main class="main-content">
+    <div class="page-header" id="overview">
+      <img class="header-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex logo">
+      <h1>Rebuilding and Deploying the Developing Mouse Visual Cortex Gene Expression Viewer</h1>
+      <img class="header-logo" src="code/shiny/www/allen_institute_logo.svg" alt="Allen Institute logo">
+    </div>
+
+    <p class="lead">
+      This guide documents the complete, reproducible workflow used to convert the public Developing Mouse Visual Cortex files from ABC Atlas Access into the pseudobulk and gene-level files required by the web application, publish those files to public AWS storage, run the R Shiny application, deploy it to Posit Connect, and configure GitHub to update the deployed application automatically.
+    </p>
+    <div class="note"><strong>Scope:</strong> This documentation applies only to the <code>mouse-aging-app</code> repository and Developing Mouse Visual Cortex viewer. It does not document the SEA-AD Multiregion application.</div>
+    <p>
+      Source repository: <a href="https://github.com/AllenInstitute/mouse-aging-app" target="_blank" rel="noopener noreferrer">AllenInstitute/mouse-aging-app</a><br>
+      Live application: <a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex Gene Expression Viewer</a><br>
+      Data documentation: <a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">ABC Atlas Access: Developing Mouse Visual Cortex</a>
+    </p>
+
+    <h2 id="workflow">End-to-end workflow</h2>
+    <ol>
+      <li>Create a GitHub repository and clone it into a linked Code Ocean Capsule.</li>
+      <li>Configure a Python + R Code Ocean environment with all compiled and interpreted dependencies.</li>
+      <li>Run <code>create_dev_mouse_vis_cortex_pseudobulk.py</code> to produce a pseudobulk H5AD.</li>
+      <li>Capture the H5AD as a Code Ocean Data Asset and mount it under <code>/data</code>.</li>
+      <li>Run <code>create_mouse_aging_parquet.py</code> to create gene-level Parquet and supporting metadata, excluding the statistics table.</li>
+      <li>Run <code>create_statistics.py</code> to create the final exploratory gene-statistics table.</li>
+      <li>Run <code>create_value_sets.py</code> to create authoritative category order and color definitions.</li>
+      <li>Upload the app-ready directory from <code>/results</code> to a public S3 prefix and verify parity.</li>
+      <li>Test <code>code/shiny/app.R</code> against the public S3 files.</li>
+      <li>Create and validate a reproducible <code>renv.lock</code>.</li>
+      <li>Deploy the app to Posit Connect.</li>
+      <li>Configure GitHub Actions to regenerate the deployment manifest from <code>renv.lock</code> and update the existing Connect content after changes under <code>code/shiny/</code>.</li>
+      <li>Publish <code>index.html</code> and this deployment guide with GitHub Pages.</li>
+    </ol>
+
+    <h2 id="structure">Repository structure</h2>
+    <pre><code>mouse-aging-app/
+├── .github/
+│   └── workflows/
+│       └── deploy-connect.yml
+├── code/
+│   ├── create_dev_mouse_vis_cortex_pseudobulk.py
+│   ├── create_mouse_aging_parquet.py
+│   ├── create_statistics.py
+│   ├── create_value_sets.py
+│   ├── run
+│   └── shiny/
+│       ├── app.R
+│       ├── renv.lock
+│       ├── .Rprofile
+│       ├── .rscignore
+│       └── www/
+│           ├── Developing_Mouse_Visual_Cortex_logo.png
+│           └── allen_institute_logo.svg
+├── data/
+│   └── .gitkeep
+├── index.html
+├── deployment_documentation.html
+├── README.md
+├── requirements.txt
+└── .gitignore</code></pre>
+    <p>Downloaded expression matrices, caches, H5AD files, Parquet files, and intermediate results are not committed to GitHub.</p>
+
+    <br><hr>
+    <h2 id="section-1"><span class="step">1</span>Set up the Code Ocean Capsule</h2>
+
+    <h3 id="github-repo">Create the GitHub repository</h3>
+    <ol>
+      <li>Create a repository named <code>mouse-aging-app</code> in the appropriate GitHub organization.</li>
+      <li>Add the repository structure shown above.</li>
+      <li>Keep <code>data/.gitkeep</code> empty so Git tracks the otherwise empty directory.</li>
+      <li>Use the Python <code>.gitignore</code> template and add exclusions for large scientific files.</li>
+    </ol>
+    <pre><code># ABC Atlas cache and generated scientific data
+data/*
+!data/.gitkeep
+results/
+abc_atlas_cache/
+*.h5ad
+*.h5
+*.parquet
+
+# R project state
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+renv/library/
+renv/staging/
+
+# Python state
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/</code></pre>
+    <p>Create <code>.gitattributes</code> to keep runtime scripts compatible with Linux:</p>
+    <pre><code>code/run text eol=lf
+*.sh text eol=lf
+*.py text eol=lf</code></pre>
+
+    <h3 id="clone-capsule">Clone the repository into Code Ocean</h3>
+    <ol>
+      <li>Add GitHub credentials to the Code Ocean account. For a private organizational repository, ensure that the GitHub credential is authorized for the organization.</li>
+      <li>In Code Ocean, choose <strong>New Capsule → Clone from Git</strong>.</li>
+      <li>Enter the HTTPS GitHub repository URL.</li>
+      <li>Name the Capsule <strong>Mouse Aging App</strong>.</li>
+      <li>Use <strong>Clone from Git</strong>, not <strong>Copy from Git</strong>, so the Capsule retains its repository connection.</li>
+    </ol>
+    <p>Code Ocean maps the repository's <code>code/</code> and <code>data/</code> directories into the Capsule's corresponding sections.</p>
+
+    <h3 id="environment">Configure the Python + R environment</h3>
+    <p>Select a current Python + R starter environment. The validated workflow used Python 3.12 and R 4.3.3. Add dependencies through the Environment Editor, rebuild, commit the environment, and launch a fresh workstation after changes.</p>
+
+    <h4>Python packages</h4>
+    <pre><code>git+https://github.com/AllenInstitute/abc_atlas_access.git
+anndata
+h5py
+numpy
+pandas
+scipy
+pyarrow</code></pre>
+
+    <h4>R CRAN packages</h4>
+    <pre><code>shiny
+bslib
+dplyr
+ggplot2==3.5.2
+scales
+shinycssloaders
+cachem
+DT
+renv
+rsconnect
+curl</code></pre>
+
+    <h4>Conda/Mamba packages</h4>
+    <pre><code>r-arrow
+libcurl
+openssl
+libstdcxx-ng&gt;=13
+libgcc-ng&gt;=13</code></pre>
+    <div class="warning">
+      <strong>Compiled-library consistency:</strong> Install R Arrow and its C++ runtime through Conda/Mamba. Use the compatible <code>ggplot2 3.5.2</code> stack for R 4.3.3. Install the R <code>curl</code> package against the current Conda <code>libcurl</code> and OpenSSL environment. Do not create compatibility symlinks between incompatible OpenSSL or C++ runtime versions.
+    </div>
+
+    <h4>Environment variable</h4>
+    <pre><code>LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu</code></pre>
+    <p>After rebuilding, validate the environment before running project code:</p>
+    <pre><code>python - &lt;&lt;'PY'
+import anndata, h5py, numpy, pandas, scipy, pyarrow
+from abc_atlas_access.abc_atlas_cache.abc_project_cache import AbcProjectCache
+print("Python imports succeeded")
+PY
+
+Rscript -e 'library(arrow); library(ggplot2); library(curl); print(arrow::arrow_info()); print(curl::curl_version())'</code></pre>
+
+    <h3 id="paths">Use /data and /results correctly</h3>
+    <table>
+      <thead><tr><th>Path</th><th>Purpose</th><th>Persistence pattern</th></tr></thead>
+      <tbody>
+        <tr><td><code>/code</code></td><td>Version-controlled scripts and Shiny application.</td><td>Commit and sync to GitHub.</td></tr>
+        <tr><td><code>/data</code></td><td>ABC Atlas cache and mounted read-only Data Assets.</td><td>Cache may be deleted after capture; mounted Data Assets persist independently.</td></tr>
+        <tr><td><code>/results</code></td><td>Generated outputs from each processing stage.</td><td>Capture important outputs as Data Assets.</td></tr>
+      </tbody>
+    </table>
+    <p>Use <code>/results</code> for durable run outputs. After validating an output, capture it as a Code Ocean Data Asset and mount that asset under <code>/data</code> for the next processing stage.</p>
+
+    <br><hr>
+    <h2 id="section-2"><span class="step">2</span>Convert and Format Back-end Files</h2>
+
+    <h3 id="pseudobulk-script">Run create_dev_mouse_vis_cortex_pseudobulk.py</h3>
+    <div class="file-card">
+      <h4><code>code/create_dev_mouse_vis_cortex_pseudobulk.py</code></h4>
+      <p>Downloads the public Developing Mouse Visual Cortex data through <code>AbcProjectCache</code>, reads the raw count matrix in backed mode, and aggregates cells in chunks. The output has one row per <code>library_label × cluster_alias</code>, one column per gene, summed raw counts in <code>X</code>, library/donor/taxonomy metadata in <code>obs</code>, and <code>number_of_cells</code> for each pseudobulk observation.</p>
+    </div>
+    <p>Use this run script:</p>
+    <pre><code>#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p /data/abc_atlas_cache
+mkdir -p /results
+
+python /code/create_dev_mouse_vis_cortex_pseudobulk.py \
+  --cache-dir /data/abc_atlas_cache \
+  --output /results/Developing_Mouse_Visual_Cortex_library_cluster_pseudobulk.h5ad</code></pre>
+    <p>Run:</p>
+    <pre><code>bash /code/run</code></pre>
+    <p>Validate:</p>
+    <pre><code>python - &lt;&lt;'PY'
+import anndata as ad
+path = "/results/Developing_Mouse_Visual_Cortex_library_cluster_pseudobulk.h5ad"
+adata = ad.read_h5ad(path, backed="r")
+print(adata.shape)
+print(adata.obs.columns.tolist())
+assert "library_label" in adata.obs.columns
+assert "cluster_alias" in adata.obs.columns
+assert "number_of_cells" in adata.obs.columns
+assert adata.obs["number_of_cells"].min() &gt; 0
+adata.file.close()
+print("Pseudobulk validation succeeded")
+PY</code></pre>
+
+    <h3 id="capture-h5ad">Capture and mount the pseudobulk H5AD</h3>
+    <ol>
+      <li>In the Cloud Workstation, create a new Data Asset from <code>/root/capsule/results</code> or the workstation path that corresponds to <code>/results</code>.</li>
+      <li>Name it <strong>Developing Mouse Visual Cortex Pseudobulk</strong>.</li>
+      <li>Record <code>/code/run</code> as the originating script when provenance options are available.</li>
+      <li>Attach the resulting Data Asset to the Capsule with mount name <code>mouse_vis_cortex_pseudobulk</code>.</li>
+      <li>Confirm the file is available at the expected path.</li>
+    </ol>
+    <pre><code>find /data -type f -name "*.h5ad" -print</code></pre>
+    <p>After the Data Asset has been validated, the temporary ABC Atlas cache can be removed:</p>
+    <pre><code>rm -rf -- /data/abc_atlas_cache</code></pre>
+
+    <h3 id="parquet-script">Run create_mouse_aging_parquet.py</h3>
+    <div class="file-card">
+      <h4><code>code/create_mouse_aging_parquet.py</code></h4>
+      <p>Reads the mounted pseudobulk H5AD and writes the app-ready gene-level Parquet resource plus metadata. The script does not create the statistics table; statistics are deliberately generated in the next independent step.</p>
+    </div>
+    <p>Run:</p>
+    <pre><code>python /code/create_mouse_aging_parquet.py \
+  --input "/data/mouse_vis_cortex_pseudobulk/Developing_Mouse_Visual_Cortex_library_cluster_pseudobulk.h5ad" \
+  --output-dir "/results/mouse_vis_cortex_parquet"</code></pre>
+    <p>Expected output:</p>
+    <pre><code>/results/mouse_vis_cortex_parquet/
+├── counts_by_gene/
+│   ├── gene=&lt;gene_key&gt;/
+│   │   └── data.parquet
+│   └── ...
+├── metadata/
+│   ├── obs_metadata.parquet
+│   ├── gene_map.parquet
+│   └── CPM_scaling.csv
+└── manifest.json</code></pre>
+    <ul>
+      <li>Each gene directory currently contains one Parquet file, but the app reads the directory as a dataset so additional files are supported.</li>
+      <li><code>obs_metadata.parquet</code> contains the full pseudobulk metadata and unique <code>sample_id</code>.</li>
+      <li><code>gene_map.parquet</code> maps user-facing gene symbols to filesystem-safe gene keys.</li>
+      <li><code>CPM_scaling.csv</code> contains <code>library_label</code> and <code>CPM_scaling_factor</code> in the same row order as every gene file and metadata table.</li>
+    </ul>
+
+    <h3 id="statistics-script">Run create_statistics.py</h3>
+    <div class="file-card">
+      <h4><code>code/create_statistics.py</code></h4>
+      <p>Reads the pseudobulk H5AD and generates the final exploratory statistics table independently of the Parquet conversion. Keeping this separate permits statistics to be revised without regenerating thousands of gene files.</p>
+    </div>
+    <p>Run:</p>
+    <pre><code>python /code/create_statistics.py</code></pre>
+    <p>The script writes:</p>
+    <pre><code>/results/mouse_gene_summary_statistics.csv</code></pre>
+    <p>Move or copy the generated file into the app-ready directory:</p>
+    <pre><code>mkdir -p /results/mouse_vis_cortex_parquet/statistics
+cp /results/mouse_gene_summary_statistics.csv \
+  /results/mouse_vis_cortex_parquet/statistics/mouse_gene_summary_statistics.csv</code></pre>
+    <p>The final columns are:</p>
+    <pre><code>gene_symbol
+ln(mean_CPM+1)
+age_log2fc
+age_log2fc(&gt;0)
+max_ROI
+log2fc_ROI
+log2fc_ROI(&gt;0)
+max_subclass
+log2fc_subclass
+log2fc_subclass(&gt;0)</code></pre>
+    <ul>
+      <li><code>age_log2fc</code> compares mean CPM among P40-or-older observations with mean CPM among all embryonic observations.</li>
+      <li>The <code>(&gt;0)</code> variants calculate group means after excluding zero values.</li>
+      <li>ROI and subclass log2 fold changes compare the maximum group mean with the arithmetic mean of group means.</li>
+    </ul>
+
+    <h3 id="valuesets-script">Run create_value_sets.py</h3>
+    <div class="file-card">
+      <h4><code>code/create_value_sets.py</code></h4>
+      <p>Creates a common <code>value_sets.csv</code> containing authoritative label order and color definitions. The script combines taxonomy annotation terms with dataset-level categorical value sets.</p>
+    </div>
+    <p>The script reads:</p>
+    <ul>
+      <li><a href="https://allen-brain-cell-atlas.s3-us-west-2.amazonaws.com/metadata/Developing-Mouse-Vis-Cortex-taxonomy/20260331/cluster_annotation_term.csv" target="_blank" rel="noopener noreferrer">cluster_annotation_term.csv</a>: <code>name</code>, <code>cluster_annotation_term_set_name</code>, <code>color_hex_triplet</code>, and <code>term_order</code>.</li>
+      <li><a href="https://allen-brain-cell-atlas.s3-us-west-2.amazonaws.com/metadata/Developing-Mouse-Vis-Cortex-10X/20260131/value_sets.csv" target="_blank" rel="noopener noreferrer">dataset value_sets.csv</a>: <code>label</code>, <code>field</code>, <code>color_hex_triplet</code>, and <code>order</code>.</li>
+    </ul>
+    <p>Run:</p>
+    <pre><code>python /code/create_value_sets.py</code></pre>
+    <p>Confirm the output is located at:</p>
+    <pre><code>/results/mouse_vis_cortex_parquet/metadata/value_sets.csv</code></pre>
+    <p>The normalized schema must be:</p>
+    <pre><code>label,field,color_hex_triplet,order</code></pre>
+
+    <h3 id="validate-backend">Validate the complete back end</h3>
+    <pre><code>find /results/mouse_vis_cortex_parquet -type f | sort | head -30
+find /results/mouse_vis_cortex_parquet -type f | wc -l
+du -sh /results/mouse_vis_cortex_parquet</code></pre>
+    <p>Verify key files:</p>
+    <pre><code>python - &lt;&lt;'PY'
+from pathlib import Path
+import pandas as pd
+import pyarrow.parquet as pq
+
+root = Path("/results/mouse_vis_cortex_parquet")
+required = [
+    root / "metadata" / "obs_metadata.parquet",
+    root / "metadata" / "gene_map.parquet",
+    root / "metadata" / "CPM_scaling.csv",
+    root / "metadata" / "value_sets.csv",
+    root / "statistics" / "mouse_gene_summary_statistics.csv",
+]
+for path in required:
+    assert path.exists(), path
+
+metadata = pq.read_table(required[0]).to_pandas()
+scaling = pd.read_csv(required[2])
+assert len(metadata) == len(scaling)
+assert metadata["library_label"].astype(str).tolist() == scaling["library_label"].astype(str).tolist()
+print("Back-end validation succeeded")
+PY</code></pre>
+    <p>Capture <code>/results/mouse_vis_cortex_parquet</code> as another Code Ocean Data Asset for provenance and internal reuse before publishing to AWS.</p>
+
+    <br><hr>
+    <h2 id="section-3"><span class="step">3</span>Publish Back-end Files to AWS</h2>
+
+    <h3 id="aws-cli">Configure the AWS CLI</h3>
+    <p>Run AWS uploads from an interactive Code Ocean terminal using an approved AWS role or temporary credential for the target bucket. Never commit credentials to GitHub or save them in scripts, results, or Data Assets.</p>
+    <p>If the AWS CLI is not present, install it through the Code Ocean environment or current workstation, then verify:</p>
+    <pre><code>aws --version
+aws sts get-caller-identity</code></pre>
+    <p>For temporary credentials:</p>
+    <pre><code>export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+export AWS_DEFAULT_REGION="us-west-2"
+
+aws sts get-caller-identity</code></pre>
+
+    <h3 id="aws-upload">Upload and verify the app-ready directory</h3>
+    <p>Target prefix used by the application:</p>
+    <pre><code>s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/</code></pre>
+    <p>Dry-run first:</p>
+    <pre><code>aws s3 sync \
+  "/results/mouse_vis_cortex_parquet/" \
+  "s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/" \
+  --region us-west-2 \
+  --dryrun</code></pre>
+    <p>Upload:</p>
+    <pre><code>aws s3 sync \
+  "/results/mouse_vis_cortex_parquet/" \
+  "s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/" \
+  --region us-west-2 \
+  --progress-multiline \
+  --progress-frequency 5</code></pre>
+    <div class="warning"><strong>Do not add <code>--delete</code> to the real upload.</strong> Use it only with <code>--dryrun</code> for parity diagnostics.</div>
+    <p>Compare paths and sizes without changing AWS:</p>
+    <pre><code>LOCAL="/data/mouse_vis_cortex_parquet"
+S3="s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse"
+
+aws s3 sync \
+  "${LOCAL}/" \
+  "${S3}/" \
+  --region us-west-2 \
+  --dryrun \
+  --delete \
+  --size-only</code></pre>
+    <p>No output indicates matching paths and sizes. Compare counts and bytes:</p>
+    <pre><code>find "${LOCAL}" -type f | wc -l
+find "${LOCAL}" -type f -printf '%s\n' | awk '{t += $1} END {printf "%.0f\n", t}'
+
+aws s3 ls "${S3}/" --recursive --summarize --region us-west-2 | tail -2</code></pre>
+    <p>Confirm anonymous access because the deployed Shiny app does not use AWS credentials:</p>
+    <pre><code>aws s3 ls \
+  "${S3}/" \
+  --no-sign-request \
+  --region us-west-2</code></pre>
+    <p>To replace only the statistics table after recalculation:</p>
+    <pre><code>aws s3 cp \
+  "/results/mouse_gene_summary_statistics.csv" \
+  "${S3}/statistics/mouse_gene_summary_statistics.csv" \
+  --region us-west-2</code></pre>
+
+    <br><hr>
+    <h2 id="section-4"><span class="step">4</span>Build and Test the Shiny Application</h2>
+
+    <h3 id="app-files">Application files</h3>
+    <div class="file-card">
+      <h4><code>code/shiny/app.R</code></h4>
+      <p>The complete R Shiny application. It loads lightweight metadata and statistics at startup, lazily retrieves one gene directory from public S3, calculates CPM, caches retrieved genes, and supports trajectory, heatmap, dot, and violin plots.</p>
+    </div>
+    <div class="file-card">
+      <h4><code>code/shiny/www/</code></h4>
+      <p>Static logos and other browser assets. The current app requires <code>Developing_Mouse_Visual_Cortex_logo.png</code> and <code>allen_institute_logo.svg</code>.</p>
+    </div>
+    <div class="file-card">
+      <h4><code>code/shiny/renv.lock</code></h4>
+      <p>Records the tested R package versions used for local reconstruction and GitHub-driven Posit Connect deployment.</p>
+    </div>
+    <div class="file-card">
+      <h4><code>code/shiny/.Rprofile</code></h4>
+      <p>Activates the project-local <code>renv</code> environment during development. Do not bundle this file in a Posit Connect deployment.</p>
+    </div>
+    <div class="file-card">
+      <h4><code>code/shiny/.rscignore</code></h4>
+      <p>Excludes development-only files from the app bundle.</p>
+    </div>
+    <pre><code>.Rprofile
+.Rproj.user
+.Rhistory
+.RData
+renv
+renv/library
+renv/staging
+rsconnect
+manifest.json</code></pre>
+    <p>Do not exclude <code>renv.lock</code>.</p>
+
+    <h3 id="app-data">How the app reads the published data</h3>
+    <p>The app uses an anonymous Arrow S3 filesystem:</p>
+    <pre><code>s3_bucket_name &lt;- "sea-ad-single-cell-profiling"
+s3_region &lt;- "us-west-2"
+s3_prefix &lt;- paste0(
+  "Multiregion_2026/previous_objects/parquet/",
+  "TEST_dev_mouse"
+)
+s3_anonymous &lt;- TRUE</code></pre>
+    <p>At startup the app reads:</p>
+    <ul>
+      <li><code>metadata/obs_metadata.parquet</code></li>
+      <li><code>metadata/gene_map.parquet</code></li>
+      <li><code>metadata/CPM_scaling.csv</code></li>
+      <li><code>metadata/value_sets.csv</code></li>
+      <li><code>statistics/mouse_gene_summary_statistics.csv</code></li>
+    </ul>
+    <p>For a selected gene, it opens the entire directory:</p>
+    <pre><code>counts_by_gene/gene=&lt;gene_key&gt;/</code></pre>
+    <p>This permits one or multiple Parquet files per gene while avoiding discovery of the complete gene collection.</p>
+
+    <h3 id="renv">Create and validate renv.lock</h3>
+    <p>Generate the lockfile from a clean, known-working local R environment. Use R 4.3.3 and public repositories. Include the application packages plus <code>rsconnect</code because the GitHub workflow uses it to generate the deployment manifest.</p>
+    <pre><code>setwd("code/shiny")
+
+options(
+  repos = c(
+    CRAN = "https://cloud.r-project.org"
+  )
+)
+
+Sys.setenv(
+  RENV_CONFIG_REPOS_OVERRIDE =
+    "https://cloud.r-project.org"
+)
+
+packages_to_record &lt;- c(
+  "shiny",
+  "bslib",
+  "arrow",
+  "dplyr",
+  "ggplot2",
+  "scales",
+  "shinycssloaders",
+  "cachem",
+  "DT",
+  "rsconnect"
+)
+
+renv::snapshot(
+  project = ".",
+  library = .libPaths(),
+  packages = packages_to_record,
+  repos = c(CRAN = "https://cloud.r-project.org"),
+  prompt = FALSE,
+  force = TRUE
+)
+
+renv::status()</code></pre>
+    <p>Verify that the direct package versions in the lockfile equal the working library and that the lockfile does not contain <code>codeocean.internal</code>. The validated plotting stack uses <code>ggplot2 3.5.2</code>.</p>
+
+    <h3 id="local-test">Test locally</h3>
+    <pre><code>setwd("code/shiny")
+renv::restore()
+shiny::runApp(".")</code></pre>
+    <p>Test:</p>
+    <ul class="checklist">
+      <li>Startup completes without AWS credentials.</li>
+      <li>The gene-statistics table loads and sorts numeric fields numerically.</li>
+      <li>Selecting a statistics row updates the gene selector.</li>
+      <li>At least two genes can be retrieved.</li>
+      <li>CPM equals <code>summed_counts × CPM_scaling_factor</code>.</li>
+      <li>Trajectory, heatmap, dot, and violin plots render.</li>
+      <li>Age order, taxonomy order, colors, facets, and legends follow <code>value_sets.csv</code>.</li>
+      <li>Browser resizing does not generate invalid plot dimensions or scrollbars.</li>
+      <li>Both logos and all external links work.</li>
+    </ul>
+
+    <h3 id="code-ocean-test">Test in a Code Ocean RStudio workstation</h3>
+    <p>Launch a fresh RStudio workstation after every environment rebuild. Test compiled package linkage before opening the application:</p>
+    <pre><code>ldd /opt/conda/lib/R/library/arrow/libs/arrow.so | grep libstdc++
+ldd /opt/conda/lib/R/library/curl/libs/curl.so | grep -E "ssl|crypto|curl"
+
+Rscript -e 'library(arrow); library(curl); library(ggplot2); print(packageVersion("ggplot2"))'</code></pre>
+    <p>Then run:</p>
+    <pre><code>cd /root/capsule/code
+Rscript -e 'shiny::runApp("shiny", host="0.0.0.0")'</code></pre>
+
+    <br><hr>
+    <h2 id="section-5"><span class="step">5</span>Deploy to Posit Connect</h2>
+
+    <h3 id="first-deploy">Perform the initial deployment</h3>
+    <ol>
+      <li>Create a Posit Connect API key with publishing permission.</li>
+      <li>Register <code>https://molgen-shiny.org</code> with <code>rsconnect::addServer()</code>.</li>
+      <li>Authenticate with <code>rsconnect::connectApiUser()</code>.</li>
+      <li>Deploy to a temporary test content item using strict lockfile resolution.</li>
+      <li>After the test succeeds, deploy to the production content item.</li>
+    </ol>
+    <pre><code>setwd("code/shiny")
+
+options(
+  repos = c(
+    CRAN = "https://cloud.r-project.org"
+  )
+)
+
+Sys.setenv(
+  RENV_CONFIG_REPOS_OVERRIDE =
+    "https://cloud.r-project.org"
+)
+
+app_files &lt;- c(
+  "app.R",
+  "renv.lock",
+  list.files(
+    "www",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+)
+
+rsconnect::deployApp(
+  appDir = ".",
+  appFiles = app_files,
+  appPrimaryDoc = "app.R",
+  appId = "3906a801-fab5-41e4-9c78-d7ce47cc0065",
+  account = "&lt;CONNECT_USERNAME&gt;",
+  server = "molgen-shiny",
+  dependencyResolution = "strict",
+  packageRepositoryResolutionR = "lax",
+  forceUpdate = TRUE,
+  launch.browser = FALSE,
+  lint = TRUE,
+  logLevel = "verbose"
+)</code></pre>
+    <p>Production application:</p>
+    <p><a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">https://molgen-shiny.org/dev_mouse_gene_exploration/</a></p>
+
+    <h3 id="connect-validate">Validate the Posit Connect deployment</h3>
+    <ul class="checklist">
+      <li>Connect installs the exact package versions derived from <code>renv.lock</code>.</li>
+      <li>Repository URLs in the build log are reachable from Connect and do not reference Code Ocean's private package proxy.</li>
+      <li>The process starts without Arrow, OpenSSL, curl, C++ ABI, or S7/ggplot compatibility errors.</li>
+      <li>The public S3 metadata loads at startup.</li>
+      <li>All app interactions pass the same checks used locally.</li>
+      <li>The content URL and vanity path are correct.</li>
+    </ul>
+
+    <br><hr>
+    <h2 id="section-6"><span class="step">6</span>Configure GitHub Auto-deployment</h2>
+
+    <h3 id="github-secret">Add the Posit Connect API key to GitHub</h3>
+    <p>In the repository, open <strong>Settings → Secrets and variables → Actions</strong> and create:</p>
+    <pre><code>CONNECT_API_KEY</code></pre>
+    <p>Use a dedicated Posit Connect API key whose account has permission to update content GUID <code>3906a801-fab5-41e4-9c78-d7ce47cc0065</code>. Never commit the key.</p>
+
+    <h3 id="workflow-file">Create .github/workflows/deploy-connect.yml</h3>
+    <div class="file-card">
+      <h4><code>.github/workflows/deploy-connect.yml</code></h4>
+      <p>Runs after changes under <code>code/shiny/</code>, restores the exact R environment from <code>renv.lock</code>, generates a fresh strict deployment manifest, verifies that no private Code Ocean repository URL is present, and updates the existing Connect content.</p>
+    </div>
+    <pre><code>name: Deploy Mouse Aging App to Posit Connect
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "code/shiny/**"
+      - ".github/workflows/deploy-connect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-mouse-aging-app
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+
+    env:
+      RENV_PATHS_ROOT: ~/.cache/R/renv
+      RENV_CONFIG_REPOS_OVERRIDE: https://cloud.r-project.org
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.3.3"
+          use-public-rspm: true
+
+      - name: Restore renv environment
+        uses: r-lib/actions/setup-renv@v2
+        with:
+          working-directory: code/shiny
+          cache-version: 2
+
+      - name: Verify restored deployment environment
+        shell: Rscript {0}
+        run: |
+          renv::load("code/shiny")
+          stopifnot(requireNamespace("rsconnect", quietly = TRUE))
+          cat("rsconnect:", as.character(packageVersion("rsconnect")), "\n")
+          cat(paste(.libPaths(), collapse = "\n"), "\n")
+
+      - name: Generate deployment manifest
+        shell: Rscript {0}
+        run: |
+          renv::load("code/shiny")
+          setwd("code/shiny")
+
+          options(
+            repos = c(
+              CRAN = "https://cloud.r-project.org"
+            )
+          )
+
+          Sys.setenv(
+            RENV_CONFIG_REPOS_OVERRIDE =
+              "https://cloud.r-project.org"
+          )
+
+          app_files &lt;- c(
+            "app.R",
+            "renv.lock",
+            list.files(
+              "www",
+              recursive = TRUE,
+              full.names = TRUE
+            )
+          )
+
+          rsconnect::writeManifest(
+            appDir = ".",
+            appFiles = app_files,
+            appPrimaryDoc = "app.R",
+            dependencyResolution = "strict",
+            packageRepositoryResolutionR = "lax",
+            verbose = TRUE
+          )
+
+          manifest_text &lt;- paste(
+            readLines("manifest.json", warn = FALSE),
+            collapse = "\n"
+          )
+
+          stopifnot(
+            !grepl(
+              "codeocean.internal",
+              manifest_text,
+              fixed = TRUE
+            )
+          )
+
+      - name: Verify deployment files
+        shell: bash
+        run: |
+          test -f code/shiny/app.R
+          test -f code/shiny/renv.lock
+          test -f code/shiny/manifest.json
+          test -f code/shiny/www/allen_institute_logo.svg
+          test -f code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png
+
+      - name: Deploy to Posit Connect
+        uses: posit-dev/connect-actions/deploy@main
+        with:
+          connect-server: https://molgen-shiny.org
+          connect-api-key: ${{ secrets.CONNECT_API_KEY }}
+          content-guid: 3906a801-fab5-41e4-9c78-d7ce47cc0065
+          path: code/shiny
+          draft: false</code></pre>
+    <p>After committing the workflow, monitor the first run under the repository's <strong>Actions</strong> tab. The workflow can also be run manually because it includes <code>workflow_dispatch</code>.</p>
+
+    <h3 id="dependency-updates">Update R dependencies safely</h3>
+    <ol>
+      <li>Make package changes in a clean local project environment.</li>
+      <li>Run the application and complete functional tests.</li>
+      <li>Run <code>renv::snapshot()</code> with the explicit package list, including <code>rsconnect</code>.</li>
+      <li>Run <code>renv::status()</code> and verify critical installed and locked versions match.</li>
+      <li>Commit <code>renv.lock</code> with the app change.</li>
+      <li>Push to a branch and, if desired, test against a temporary Connect content item before merging to <code>main</code>.</li>
+    </ol>
+    <div class="note"><strong>Why rsconnect is locked:</strong> The GitHub workflow calls <code>rsconnect::writeManifest()</code> from the restored project library, so <code>rsconnect</code> and its recursive dependencies must be present in <code>renv.lock</code> even though the Shiny runtime does not call them.</div>
+
+    <br><hr>
+    <h2 id="section-7"><span class="step">7</span>Publish Documentation with GitHub Pages</h2>
+
+    <h3 id="pages">Publish index.html and this guide</h3>
+    <ol>
+      <li>Place <code>index.html</code> and <code>deployment_documentation.html</code> at the repository root.</li>
+      <li>In GitHub, open <strong>Settings → Pages</strong>.</li>
+      <li>Select <code>main</code> and <code>/(root)</code> as the publishing source.</li>
+      <li>Commit and push both HTML files.</li>
+      <li>Add a link from <code>index.html</code> to this guide if desired.</li>
+    </ol>
+    <p>Because the repository is private, GitHub may assign a unique private Pages subdomain. Routine deployments update the content at that same private Pages address.</p>
+
+    <br><hr>
+    <h2 id="maintenance"><i class="fas fa-list-check"></i> Maintenance Checklist</h2>
+    <h3>When only app.R or CSS changes</h3>
+    <ol>
+      <li>Test locally.</li>
+      <li>Commit changes under <code>code/shiny/</code>.</li>
+      <li>Push or merge to <code>main</code>.</li>
+      <li>Confirm the GitHub Action succeeds.</li>
+      <li>Validate the live app.</li>
+    </ol>
+
+    <h3>When an R package changes</h3>
+    <ol>
+      <li>Update the local project library.</li>
+      <li>Test all application functionality.</li>
+      <li>Run the explicit <code>renv::snapshot()</code>.</li>
+      <li>Commit both code and <code>renv.lock</code>.</li>
+      <li>Review the Connect build log after deployment.</li>
+    </ol>
+
+    <h3>When source data or preprocessing changes</h3>
+    <ol>
+      <li>Regenerate the pseudobulk H5AD if the aggregation definition changed.</li>
+      <li>Capture the revised H5AD as a versioned Data Asset.</li>
+      <li>Regenerate gene Parquet and metadata.</li>
+      <li>Regenerate statistics independently.</li>
+      <li>Regenerate <code>value_sets.csv</code> if taxonomy, anatomical labels, order, or colors changed.</li>
+      <li>Validate all files and capture the complete output as a Data Asset.</li>
+      <li>Upload to a new AWS test prefix.</li>
+      <li>Test the app against the test prefix.</li>
+      <li>Promote the tested prefix or update <code>s3_prefix</code> in <code>app.R</code>.</li>
+      <li>Push the app change to trigger deployment.</li>
+    </ol>
+
+    <br><hr>
+    <h2 id="troubleshooting"><i class="fas fa-screwdriver-wrench"></i> Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th><th>Resolution</th></tr></thead>
+      <tbody>
+        <tr><td><code>object 'counts_dataset' not found</code></td><td>The global dataset was removed for faster startup but <code>read_gene()</code> still references it.</td><td>Open the selected <code>counts_by_gene/gene=&lt;gene_key&gt;/</code> directory inside <code>read_gene()</code>; do not open the full collection at startup.</td></tr>
+        <tr><td>First gene is as slow as startup used to be</td><td>A delayed global dataset still discovers all gene partitions.</td><td>Remove the delayed global dataset and open only the selected gene directory.</td></tr>
+        <tr><td><code>CXXABI_1.3.15 not found</code></td><td>Arrow loads an older system <code>libstdc++</code>.</td><td>Install current Conda C++ runtimes and place <code>/opt/conda/lib</code> first in <code>LD_LIBRARY_PATH</code>.</td></tr>
+        <tr><td><code>libssl.so.1.1 not found</code> for R curl</td><td>An old R curl binary was compiled against OpenSSL 1.1.</td><td>Install current <code>libcurl</code>/<code>openssl</code> and build the R <code>curl</code> package against that environment.</td></tr>
+        <tr><td><code>Incompatible methods ("Ops.S7_object", "+.gg")</code></td><td>Incompatible ggplot2/S7 package stack.</td><td>Use the validated <code>ggplot2 3.5.2</code> environment.</td></tr>
+        <tr><td><code>Library and lockfile are out of sync</code></td><td>The active R library differs from <code>renv.lock</code>.</td><td>Rebuild and test a clean library, then snapshot the tested package versions. Use strict resolution only after synchronization.</td></tr>
+        <tr><td><code>there is no package called 'rsconnect'</code> in GitHub Actions</td><td>The project library was restored but not activated in the standalone Rscript step, or rsconnect was omitted from the lockfile.</td><td>Record <code>rsconnect</code> in <code>renv.lock</code> and call <code>renv::load("code/shiny")</code> before using it.</td></tr>
+        <tr><td>Connect cannot resolve <code>codeocean.internal</code></td><td>The manifest captured Code Ocean's private package proxy.</td><td>Set public repositories before manifest generation and fail the workflow if the private URL appears.</td></tr>
+        <tr><td><code>invalid 'width' or 'height'</code> in plotting</td><td>Plot output or parent containers report a transient invalid dimension.</td><td>Use one explicit responsive sizing model, allow containers to shrink with <code>min-height: 0</code>, and avoid competing height calculations.</td></tr>
+        <tr><td>Windows shell script reports invalid <code>pipefail</code></td><td>CRLF line endings.</td><td>Convert <code>code/run</code> to LF and enforce line endings with <code>.gitattributes</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <br><hr>
+    <h2 id="references"><i class="fas fa-link"></i> References</h2>
+    <ul>
+      <li><a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex dataset description</a></li>
+      <li><a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-taxonomy.html" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex taxonomy</a></li>
+      <li><a href="https://github.com/AllenInstitute/abc_atlas_access" target="_blank" rel="noopener noreferrer">ABC Atlas Access repository</a></li>
+      <li><a href="https://www.nature.com/articles/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">Continuous cell-type diversification in mouse visual cortex development</a></li>
+      <li><a href="https://docs.codeocean.com/user-guide/git-provider-integration-guide/github-integration-user-guide" target="_blank" rel="noopener noreferrer">Code Ocean Git provider integration</a></li>
+      <li><a href="https://docs.posit.co/connect/how-to/use-renv-for-reproducible-r-deployments/" target="_blank" rel="noopener noreferrer">Using renv for reproducible Posit Connect deployments</a></li>
+      <li><a href="https://docs.posit.co/connect/user/publishing-github-actions/" target="_blank" rel="noopener noreferrer">Publishing to Posit Connect from GitHub Actions</a></li>
+      <li><a href="https://github.com/posit-dev/connect-actions" target="_blank" rel="noopener noreferrer">Posit Connect GitHub Actions</a></li>
+      <li><a href="https://github.com/AllenInstitute/mouse-aging-app" target="_blank" rel="noopener noreferrer">mouse-aging-app repository</a></li>
+    </ul>
+
+    <div class="success"><strong>Rebuild criterion:</strong> A successful rebuild ends with a validated Code Ocean provenance chain, an anonymously readable public S3 back end, a locally and remotely tested Shiny application, a reproducible <code>renv.lock</code>, a working Posit Connect content item, and a GitHub Action that updates that content whenever <code>code/shiny/</code> changes.</div>
+  </main>
+</body>
+</html>
