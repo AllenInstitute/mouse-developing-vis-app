@@ -100,6 +100,45 @@ value_sets <- as.data.frame(
 )
 rm(startup)
 
+table_column_definitions_path <- "table_column_definitions.csv"
+if (!file.exists(table_column_definitions_path)) {
+  stop(
+    "Missing local table definition file: ",
+    table_column_definitions_path
+  )
+}
+table_column_definitions <- read.csv(
+  table_column_definitions_path,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+required_definition_columns <- c(
+  "column_names",
+  "column_definitions"
+)
+missing_definition_columns <- setdiff(
+  required_definition_columns,
+  names(table_column_definitions)
+)
+if (length(missing_definition_columns) > 0) {
+  stop(
+    "table_column_definitions.csv is missing: ",
+    paste(missing_definition_columns, collapse = ", ")
+  )
+}
+table_column_definitions <- table_column_definitions |>
+  transmute(
+    column_names = as.character(column_names),
+    column_definitions = as.character(column_definitions)
+  ) |>
+  filter(
+    !is.na(column_names),
+    nzchar(column_names),
+    !is.na(column_definitions),
+    nzchar(column_definitions)
+  ) |>
+  distinct(column_names, .keep_all = TRUE)
+
 # ============================================================
 # Validate and align supporting data
 # ============================================================
@@ -365,11 +404,87 @@ categorical_fields <- preferred_fields[vapply(
   logical(1)
 )]
 
+omit_plot_fields <- c(
+  "library_label"
+)
+omit_filter_fields <- c(
+  "library_prep"
+)
+
 plot_fields <- setdiff(
   categorical_fields,
-  c("library_label", "donor_label", "donor_id")
+  omit_plot_fields
 )
-filter_fields <- categorical_fields
+numeric_filter_fields <- names(metadata)[vapply(
+  metadata,
+  is.numeric,
+  logical(1)
+)]
+numeric_filter_fields <- setdiff(
+  numeric_filter_fields,
+  c(
+    "CPM_scaling_factor"
+  )
+)
+filter_fields <- setdiff(
+  unique(c(
+    categorical_fields,
+    numeric_filter_fields
+  )),
+  omit_filter_fields
+)
+
+filter_input_id <- function(field) {
+  field_index <- match(field, filter_fields)
+  if (is.na(field_index)) {
+    stop("Unknown filter field: ", field)
+  }
+  paste0("stack_filter_", field_index)
+}
+
+apply_filter_specification <- function(data, filters) {
+  if (length(filters) == 0) {
+    return(data)
+  }
+  
+  for (specification in filters) {
+    field <- specification$field
+    if (!field %in% names(data)) {
+      next
+    }
+    
+    if (identical(specification$type, "numeric")) {
+      bounds <- as.numeric(specification$value)
+      if (
+        length(bounds) == 2 &&
+        all(is.finite(bounds))
+      ) {
+        numeric_values <- suppressWarnings(
+          as.numeric(data[[field]])
+        )
+        data <- data[
+          is.finite(numeric_values) &
+            numeric_values >= min(bounds) &
+            numeric_values <= max(bounds),
+          ,
+          drop = FALSE
+        ]
+      }
+    } else {
+      included_values <- as.character(specification$value)
+      if (length(included_values) > 0) {
+        data <- data[
+          as.character(data[[field]]) %in% included_values,
+          ,
+          drop = FALSE
+        ]
+      }
+    }
+  }
+  
+  data
+}
+
 cell_type_fields <- unique(na.omit(c(
   class_field,
   subclass_field,
@@ -425,6 +540,50 @@ age_level_order <- function(x) {
   values[order(numeric_values, values, na.last = TRUE)]
 }
 
+progression_positions <- function(data, field, maximum_step = 3) {
+  values <- as.character(data[[field]])
+  values <- values[!is.na(values) & nzchar(values)]
+  labels <- field_levels(data, field)
+  labels <- labels[labels %in% values]
+  parsed <- parse_age(labels)
+  recognized_age <- grepl(
+    "^[EP]\\s*[0-9]",
+    toupper(trimws(labels))
+  )
+  
+  if (
+    length(labels) > 0 &&
+    all(recognized_age) &&
+    all(is.finite(parsed))
+  ) {
+    raw_steps <- diff(parsed)
+    positions <- if (length(raw_steps) == 0) {
+      1
+    } else {
+      c(1, 1 + cumsum(pmin(raw_steps, maximum_step)))
+    }
+  } else {
+    positions <- seq_along(labels)
+  }
+  
+  names(positions) <- labels
+  half_step <- if (length(positions) < 2) {
+    0.5
+  } else {
+    max(0.5, min(diff(positions)) / 2)
+  }
+  
+  list(
+    labels = labels,
+    breaks = unname(positions),
+    lookup = positions,
+    limits = c(
+      min(positions) - half_step,
+      max(positions) + half_step
+    )
+  )
+}
+
 field_levels <- function(data, field) {
   values <- unique(as.character(data[[field]]))
   values <- values[!is.na(values) & nzchar(values)]
@@ -447,6 +606,18 @@ factor_field <- function(data, field) {
   data
 }
 
+distinct_category_colors <- function(n) {
+  if (n <= 0) {
+    return(character())
+  }
+  grDevices::hcl.colors(
+    n,
+    palette = "Dark 3",
+    alpha = 1,
+    rev = FALSE
+  )
+}
+
 field_colors <- function(data, field) {
   levels <- field_levels(data, field)
   specification <- value_set_for(field, data[[field]])
@@ -456,13 +627,13 @@ field_colors <- function(data, field) {
     missing <- is.na(colors) | !grepl("^#[0-9A-Fa-f]{6}$", colors)
     
     if (any(missing)) {
-      colors[missing] <- scales::hue_pal()(sum(missing))
+      colors[missing] <- distinct_category_colors(sum(missing))
     }
     
     return(colors)
   }
   
-  setNames(scales::hue_pal()(length(levels)), levels)
+  setNames(distinct_category_colors(length(levels)), levels)
 }
 
 manual_color_scale <- function(data, field, aesthetic = "color") {
@@ -634,10 +805,28 @@ ui <- page_sidebar(
       }
       .compact-controls hr { margin: 5px 0; border-color: rgba(255,255,255,.3); }
       .compact-controls .shiny-input-container { margin-bottom: 3px !important; }
-      .compact-controls .shiny-input-container > label,
+      /* Standard input labels */
+      .compact-controls .shiny-input-container > label {
+        font-size: 0.75rem !important;
+        line-height: 1.05 !important;
+        margin-bottom: 1px !important;
+      }
+      /* Checkbox labels across Shiny and bslib versions */
       .compact-controls .form-check-label,
+      .compact-controls .shiny-input-checkbox label,
+      .compact-controls .checkbox label,
       .compact-controls input[type='checkbox'] + label {
-        font-size: .75rem !important; line-height: 1.08 !important;
+        font-size: 0.75rem !important;
+        line-height: 1.05 !important;
+        margin-bottom: 1px !important;
+        white-space: nowrap;
+      }
+      .compact-controls .form-check {
+        min-height: 19px !important;
+        margin: 1px 0 2px 0 !important;
+      }
+      .compact-controls .form-check-input {
+        margin-top: 0.10rem !important;
       }
       .compact-controls .form-select,
       .compact-controls .form-control,
@@ -651,10 +840,32 @@ ui <- page_sidebar(
         text-align: center;
         margin: 3px 0 4px 0;
       }
-      #filter_values + .selectize-control .selectize-input,
-      #filter_values + .selectize-control .selectize-dropdown,
-      #filter_values-selectized + .selectize-dropdown {
+      #filter_fields + .selectize-control .selectize-input,
+      #filter_fields + .selectize-control .selectize-dropdown,
+      #filter_fields-selectized + .selectize-dropdown,
+      .stacked-filter-control .selectize-input,
+      .stacked-filter-control .selectize-dropdown {
         background: white !important; color: #111827 !important;
+      }
+      .stacked-filter-panel {
+        border: 1px solid rgba(255,255,255,.28);
+        border-radius: 5px;
+        padding: 5px 6px 2px;
+        margin: 3px 0 5px;
+        background: rgba(255,255,255,.06);
+      }
+      .stacked-filter-control {
+        margin-bottom: 5px;
+      }
+      .stacked-filter-control:last-child {
+        margin-bottom: 1px;
+      }
+      .stacked-filter-control .irs--shiny .irs-bar,
+      .stacked-filter-control .irs--shiny .irs-single,
+      .stacked-filter-control .irs--shiny .irs-from,
+      .stacked-filter-control .irs--shiny .irs-to {
+        background: #4B9B58;
+        border-color: #4B9B58;
       }
       .gene-status { font-size: .76rem; min-height: 1.2rem; margin: 2px 0; }
       .btn-primary, .btn-outline-primary {
@@ -664,6 +875,16 @@ ui <- page_sidebar(
       .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .gene-table-panel { padding: 8px; overflow-x: auto; }
       .gene-table-panel table.dataTable { font-size: .82rem; }
+      .gene-table-panel table.dataTable thead th.has-definition {
+        cursor: help;
+        text-decoration: underline dotted;
+        text-underline-offset: 2px;
+      }
+      .expression-scale-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
       .expression-panel { width: 100%; overflow: hidden; }
       .expression-title {
         min-height: 42px; padding: 9px 13px; background: #111827;
@@ -712,14 +933,17 @@ ui <- page_sidebar(
     ),
     div(
       class = "gene-controls",
-      h4("Gene"),
       selectizeInput(
         "gene",
         "Gene symbol",
         choices = NULL,
         selected = NULL,
         options = list(
-          placeholder = "Type a gene symbol",
+          placeholder = paste0(
+            "Type a gene symbol (e.g., ",
+            default_gene,
+            ")"
+          ),
           maxOptions = 50,
           create = FALSE
         )
@@ -732,120 +956,160 @@ ui <- page_sidebar(
       ),
       div(class = "gene-status", textOutput("gene_status"))
     ),
-    div(
-      class = "compact-controls",
-      hr(),
-      h4("Filter and scale"),
+    conditionalPanel(
+      condition = "output.gene_loaded",
       div(
-        class = "filter-row",
-        selectInput(
-          "filter_field",
-          "Filter metadata",
-          choices = c("No filter" = "none", filter_fields),
-          selected = "none"
-        ),
+        class = "compact-controls",
+        hr(),
+        h4("Filter and scale"),
         selectizeInput(
-          "filter_values",
-          "Include values",
-          choices = NULL,
-          selected = NULL,
+          "filter_fields",
+          "Filter metadata",
+          choices = filter_fields,
+          selected = character(),
           multiple = TRUE,
           options = list(
-            placeholder = "Select values",
+            placeholder = "Add one or more filters",
             maxOptions = 1000,
-            closeAfterSelect = TRUE
+            closeAfterSelect = TRUE,
+            plugins = list("remove_button")
           )
-        )
-      ),
-      checkboxInput(
-        "omit_zero_values",
-        "Discard observations with zero counts",
-        FALSE
-      ),
-      checkboxInput(
-        "log_scale",
-        "Plot ln(CPM + 1)",
-        TRUE
-      ),
-      hr(),
-      h4("Plot"),
-      selectInput(
-        "plot_type",
-        "Plot type",
-        choices = c(
-          "Trajectory across development" = "trajectory",
-          "Heatmap of mean expression" = "heatmap",
-          "Dot plot of mean expression" = "dot",
-          "Violin plot with observations" = "violin"
         ),
-        selected = "trajectory"
-      ),
-      conditionalPanel(
-        condition = "input.plot_type == 'trajectory'",
-        selectInput(
-          "progression_variable",
-          "Developmental progression axis",
-          choices = age_field,
-          selected = age_field
-        ),
-        selectInput(
-          "facet_variable",
-          "Facet by (maximum 30 values)",
-          choices = c(cell_type_fields, region_field),
-          selected = default_facet
-        ),
-        selectInput(
-          "color_variable",
-          "Color by (maximum 15 values)",
-          choices = region_field,
-          selected = default_color
-        ),
-        selectInput(
-          "smoother",
-          "Trend line",
-          choices = c(
-            "LOESS smoother" = "loess",
-            "Linear fit" = "lm",
-            "None" = "none"
-          ),
-          selected = "loess"
+        div(
+          class = "stacked-filter-panel",
+          uiOutput("stacked_filter_controls")
         ),
         checkboxInput(
-          "show_points",
-          "Show individual observations",
-          TRUE
-        )
-      ),
-      conditionalPanel(
-        condition = "input.plot_type != 'trajectory'",
-        selectInput(
-          "x_variable",
-          "Horizontal axis",
-          choices = plot_fields,
-          selected = default_x
+          "omit_zero_values",
+          "Discard observations with zero counts",
+          FALSE
         ),
+        hr(),
+        h4("Plot"),
         selectInput(
-          "second_dimension",
-          "Second dimension",
-          choices = setdiff(plot_fields, default_x),
-          selected = default_second
+          "plot_type",
+          "Plot type",
+          choices = c(
+            "Trajectory across development" = "trajectory",
+            "Heatmap of mean expression" = "heatmap",
+            "Dot plot of mean expression" = "dot",
+            "Violin plot with observations" = "violin"
+          ),
+          selected = "trajectory"
+        ),
+        conditionalPanel(
+          condition = "input.plot_type == 'trajectory'",
+          selectInput(
+            "progression_variable",
+            "Developmental progression axis",
+            choices = age_field,
+            selected = age_field
+          ),
+          selectInput(
+            "facet_variable",
+            "Facet by (maximum 30 values)",
+            choices = c(
+              "Show all data together" = "none",
+              cell_type_fields,
+              region_field
+            ),
+            selected = default_facet
+          ),
+          selectInput(
+            "color_variable",
+            "Color by (maximum 15 values)",
+            choices = c(
+              "All data" = "none",
+              region_field
+            ),
+            selected = default_color
+          ),
+          selectInput(
+            "smoother",
+            "Trend line",
+            choices = c(
+              "LOESS smoother" = "loess",
+              "Linear fit" = "lm",
+              "None" = "none"
+            ),
+            selected = "loess"
+          ),
+        ),
+        conditionalPanel(
+          condition = "input.plot_type != 'trajectory'",
+          selectInput(
+            "x_variable",
+            "Horizontal axis",
+            choices = plot_fields,
+            selected = default_x
+          ),
+          selectInput(
+            "second_dimension",
+            "Second dimension",
+            choices = setdiff(plot_fields, default_x),
+            selected = default_second
+          )
+        ),
+        checkboxInput(
+          "log_scale",
+          "Plot ln(CPM + 1)",
+          TRUE
+        ),
+        checkboxInput(
+          "automatic_expression_limits",
+          "Use automatic expression limits",
+          TRUE
+        ),
+        conditionalPanel(
+          condition = "!input.automatic_expression_limits",
+          div(
+            class = "expression-scale-row",
+            numericInput(
+              "expression_minimum",
+              "Minimum",
+              value = 0,
+              min = 0
+            ),
+            numericInput(
+              "expression_maximum",
+              "Maximum",
+              value = 1,
+              min = 0
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.plot_type == 'heatmap'",
+          checkboxInput(
+            "show_heatmap_counts",
+            "Show number of observations",
+            TRUE
+          )
+        ),
+        conditionalPanel(
+          condition = "input.plot_type == 'trajectory'",
+          checkboxInput(
+            "show_points",
+            "Show individual observations",
+            TRUE
+          )
+        ),
+        actionButton(
+          "make_plot",
+          "Generate plot",
+          class = "btn-primary",
+          width = "100%"
+        ),
+        div(
+          class = "repeat-plot-note",
+          "If nothing happens, press ^ again."
+        ),
+        actionButton(
+          "reset_defaults",
+          "Reset plot options",
+          class = "btn-outline-light btn-sm mt-1",
+          width = "100%"
         )
-      ),
-      actionButton(
-        "make_plot",
-        "Generate plot",
-        class = "btn-primary",
-        width = "100%"
-      ),
-      div(
-        class = "repeat-plot-note",
-        "If nothing happens, press ^ again."
-      ),
-      actionButton(
-        "reset_defaults",
-        "Reset plot options",
-        class = "btn-outline-light btn-sm mt-1",
-        width = "100%"
       )
     )
   ),
@@ -896,6 +1160,16 @@ server <- function(input, output, session) {
   gene_status_message <- reactiveVal("No gene retrieved yet.")
   previous_dimension_plot_type <- reactiveVal(NULL)
   
+  output$gene_loaded <- reactive({
+    !is.null(gene_data()) &&
+      !is.null(loaded_gene())
+  })
+  outputOptions(
+    output,
+    "gene_loaded",
+    suspendWhenHidden = FALSE
+  )
+  
   output$gene_statistics_table <- DT::renderDT({
     table_data <- gene_statistics
     
@@ -910,6 +1184,24 @@ server <- function(input, output, session) {
     } else {
       0L
     }
+    
+    gene_column_index <- match(
+      statistics_gene_column,
+      names(table_data)
+    ) - 1L
+    
+    header_definitions <- setNames(
+      table_column_definitions$column_definitions,
+      table_column_definitions$column_names
+    )
+    header_definitions <- unname(
+      header_definitions[names(table_data)]
+    )
+    header_definitions[is.na(header_definitions)] <- ""
+    header_definitions_json <- jsonlite::toJSON(
+      header_definitions,
+      auto_unbox = TRUE
+    )
     
     table <- DT::datatable(
       table_data,
@@ -928,6 +1220,39 @@ server <- function(input, output, session) {
         searchHighlight = TRUE,
         order = list(
           list(first_numeric_index, "desc")
+        ),
+        initComplete = DT::JS(
+          "function(settings, json) {",
+          paste0("  var definitions = ", header_definitions_json, ";"),
+          "  var api = this.api();",
+          "  api.columns().every(function(index) {",
+          "    var definition = definitions[index] || '';",
+          "    if (definition !== '') {",
+          "      var header = $(this.header());",
+          "      header.attr('title', definition);",
+          "      header.attr('data-bs-toggle', 'tooltip');",
+          "      header.attr('data-bs-placement', 'bottom');",
+          "      header.addClass('has-definition');",
+          "      if (window.bootstrap && bootstrap.Tooltip) {",
+          "        bootstrap.Tooltip.getOrCreateInstance(header[0], {container: 'body'});",
+          "      }",
+          "    }",
+          "  });",
+          "}"
+        ),
+        columnDefs = list(
+          list(
+            targets = gene_column_index,
+            render = DT::JS(
+              "function(data, type, row, meta) {",
+              "  if (type !== 'display' || data === null || data === '') return data;",
+              "  var gene = String(data);",
+              "  var href = 'https://www.genecards.org/card/' + encodeURIComponent(gene);",
+              "  var label = $('<div>').text(gene).html();",
+              "  return '<a href=\"' + href + '\" target=\"_blank\" rel=\"noopener noreferrer\">' + label + '</a>';",
+              "}"
+            )
+          )
         )
       ),
       class = "compact stripe hover"
@@ -976,7 +1301,7 @@ server <- function(input, output, session) {
       session,
       "gene",
       choices = available_genes,
-      selected = default_gene,
+      selected = character(),
       server = TRUE
     )
   }, once = TRUE)
@@ -1094,43 +1419,200 @@ server <- function(input, output, session) {
   
   output$gene_status <- renderText(gene_status_message())
   
-  observeEvent(input$filter_field, {
-    if (is.null(input$filter_field) || input$filter_field == "none") {
-      updateSelectizeInput(
-        session,
-        "filter_values",
-        choices = character(),
-        selected = character(),
-        server = TRUE
-      )
-      return()
+  automatic_expression_range <- reactive({
+    data <- gene_data()
+    req(data)
+    
+    filtered <- apply_filter_specification(
+      data,
+      active_filter_specification()
+    )
+    if (isTRUE(input$omit_zero_values)) {
+      filtered <- filtered |>
+        filter(summed_counts > 0)
     }
     
-    choices <- field_levels(metadata, input$filter_field)
-    updateSelectizeInput(
-      session,
-      "filter_values",
-      choices = choices,
-      selected = NULL,
-      server = TRUE
+    values <- if (isTRUE(input$log_scale)) {
+      log1p(filtered$CPM)
+    } else {
+      filtered$CPM
+    }
+    values <- values[is.finite(values)]
+    validate(need(
+      length(values) > 0,
+      "No finite expression values remain after filtering."
+    ))
+    
+    c(
+      minimum = 0,
+      maximum = max(values, na.rm = TRUE)
     )
-  }, ignoreInit = FALSE)
+  })
+  
+  observeEvent(automatic_expression_range(), {
+    req(isTRUE(input$automatic_expression_limits))
+    limits <- automatic_expression_range()
+    maximum <- max(limits[["maximum"]], .Machine$double.eps)
+    updateNumericInput(
+      session,
+      "expression_minimum",
+      value = limits[["minimum"]],
+      min = 0,
+      max = maximum
+    )
+    updateNumericInput(
+      session,
+      "expression_maximum",
+      value = maximum,
+      min = 0,
+      max = maximum
+    )
+  }, ignoreInit = TRUE)
+  
+  output$stacked_filter_controls <- renderUI({
+    selected_fields <- input$filter_fields
+    if (is.null(selected_fields) || length(selected_fields) == 0) {
+      return(
+        div(
+          class = "small text-white-50",
+          "No metadata filters selected."
+        )
+      )
+    }
+    
+    selected_fields <- selected_fields[
+      selected_fields %in% filter_fields
+    ]
+    
+    tagList(lapply(selected_fields, function(field) {
+      input_id <- filter_input_id(field)
+      current_value <- isolate(input[[input_id]])
+      
+      if (field %in% numeric_filter_fields) {
+        numeric_values <- suppressWarnings(
+          as.numeric(metadata[[field]])
+        )
+        numeric_values <- numeric_values[is.finite(numeric_values)]
+        
+        if (length(numeric_values) == 0) {
+          return(NULL)
+        }
+        
+        minimum <- min(numeric_values)
+        maximum <- max(numeric_values)
+        selected_range <- if (
+          length(current_value) == 2 &&
+          all(is.finite(as.numeric(current_value)))
+        ) {
+          pmax(
+            minimum,
+            pmin(maximum, as.numeric(current_value))
+          )
+        } else {
+          c(minimum, maximum)
+        }
+        
+        step_size <- if (
+          all(abs(numeric_values - round(numeric_values)) < 1e-9)
+        ) {
+          1
+        } else {
+          max((maximum - minimum) / 100, .Machine$double.eps)
+        }
+        
+        div(
+          class = "stacked-filter-control",
+          sliderInput(
+            input_id,
+            field,
+            min = minimum,
+            max = maximum,
+            value = selected_range,
+            step = step_size,
+            separator = ""
+          )
+        )
+      } else {
+        choices <- field_levels(metadata, field)
+        selected_values <- as.character(current_value)
+        selected_values <- selected_values[
+          selected_values %in% choices
+        ]
+        
+        div(
+          class = "stacked-filter-control",
+          selectizeInput(
+            input_id,
+            field,
+            choices = choices,
+            selected = selected_values,
+            multiple = TRUE,
+            options = list(
+              placeholder = "Include values",
+              maxOptions = 1000,
+              closeAfterSelect = TRUE,
+              plugins = list("remove_button")
+            )
+          )
+        )
+      }
+    }))
+  })
+  
+  active_filter_specification <- reactive({
+    selected_fields <- input$filter_fields
+    if (is.null(selected_fields) || length(selected_fields) == 0) {
+      return(list())
+    }
+    
+    selected_fields <- selected_fields[
+      selected_fields %in% filter_fields
+    ]
+    
+    filters <- lapply(selected_fields, function(field) {
+      value <- input[[filter_input_id(field)]]
+      
+      if (field %in% numeric_filter_fields) {
+        if (
+          is.null(value) ||
+          length(value) != 2 ||
+          !all(is.finite(as.numeric(value)))
+        ) {
+          return(NULL)
+        }
+        list(
+          field = field,
+          type = "numeric",
+          value = as.numeric(value)
+        )
+      } else {
+        value <- as.character(value)
+        value <- value[!is.na(value) & nzchar(value)]
+        if (length(value) == 0) {
+          return(NULL)
+        }
+        list(
+          field = field,
+          type = "categorical",
+          value = value
+        )
+      }
+    })
+    
+    Filter(Negate(is.null), filters)
+  })
   
   control_metadata <- reactive({
-    if (
-      is.null(input$filter_field) ||
-      input$filter_field == "none" ||
-      length(input$filter_values) == 0
-    ) {
-      return(metadata)
-    }
+    filtered <- apply_filter_specification(
+      metadata,
+      active_filter_specification()
+    )
     
-    out <- metadata |>
-      filter(
-        as.character(.data[[input$filter_field]]) %in%
-          as.character(input$filter_values)
-      )
-    if (nrow(out) == 0) metadata else out
+    if (nrow(filtered) == 0) {
+      metadata[0, , drop = FALSE]
+    } else {
+      filtered
+    }
   })
   
   observeEvent(control_metadata(), {
@@ -1146,14 +1628,32 @@ server <- function(input, output, session) {
       15
     )
     
-    if (length(facet_choices) == 0) facet_choices <- default_facet
-    if (length(color_choices) == 0) color_choices <- default_color
+    facet_choices <- c(
+      "Show all data together" = "none",
+      facet_choices
+    )
+    color_choices <- c(
+      "All data" = "none",
+      color_choices
+    )
     
     current_facet <- isolate(input$facet_variable)
-    if (!current_facet %in% facet_choices) current_facet <- facet_choices[[1]]
+    if (!current_facet %in% unname(facet_choices)) {
+      current_facet <- if (default_facet %in% unname(facet_choices)) {
+        default_facet
+      } else {
+        "none"
+      }
+    }
     
     current_color <- isolate(input$color_variable)
-    if (!current_color %in% color_choices) current_color <- color_choices[[1]]
+    if (!current_color %in% unname(color_choices)) {
+      current_color <- if (default_color %in% unname(color_choices)) {
+        default_color
+      } else {
+        "none"
+      }
+    }
     
     updateSelectInput(
       session,
@@ -1253,16 +1753,24 @@ server <- function(input, output, session) {
   )
   
   observeEvent(input$reset_defaults, {
-    updateSelectInput(session, "filter_field", selected = "none")
     updateSelectizeInput(
       session,
-      "filter_values",
-      choices = character(),
+      "filter_fields",
       selected = character(),
       server = TRUE
     )
     updateCheckboxInput(session, "omit_zero_values", value = FALSE)
     updateCheckboxInput(session, "log_scale", value = TRUE)
+    updateCheckboxInput(
+      session,
+      "automatic_expression_limits",
+      value = TRUE
+    )
+    updateCheckboxInput(
+      session,
+      "show_heatmap_counts",
+      value = TRUE
+    )
     updateSelectInput(session, "plot_type", selected = "trajectory")
     updateSelectInput(session, "progression_variable", selected = age_field)
     updateSelectInput(session, "facet_variable", selected = default_facet)
@@ -1285,10 +1793,15 @@ server <- function(input, output, session) {
     req(gene_data(), loaded_gene(), input$plot_type)
     list(
       plot_type = input$plot_type,
-      filter_field = input$filter_field,
-      filter_values = input$filter_values,
+      filters = active_filter_specification(),
       omit_zero_values = isTRUE(input$omit_zero_values),
       log_scale = isTRUE(input$log_scale),
+      automatic_expression_limits = isTRUE(
+        input$automatic_expression_limits
+      ),
+      expression_minimum = input$expression_minimum,
+      expression_maximum = input$expression_maximum,
+      show_heatmap_counts = isTRUE(input$show_heatmap_counts),
       progression_variable = input$progression_variable,
       facet_variable = input$facet_variable,
       color_variable = input$color_variable,
@@ -1304,17 +1817,10 @@ server <- function(input, output, session) {
     data <- gene_data()
     req(data)
     
-    if (
-      !is.null(settings$filter_field) &&
-      settings$filter_field != "none" &&
-      length(settings$filter_values) > 0
-    ) {
-      data <- data |>
-        filter(
-          as.character(.data[[settings$filter_field]]) %in%
-            as.character(settings$filter_values)
-        )
-    }
+    data <- apply_filter_specification(
+      data,
+      settings$filters
+    )
     
     if (settings$omit_zero_values) {
       data <- data |> filter(summed_counts > 0)
@@ -1359,6 +1865,7 @@ server <- function(input, output, session) {
       )))) |>
       summarise(
         expression = mean(plotted_expression, na.rm = TRUE),
+        n_observations = dplyr::n(),
         .groups = "drop"
       )
     
@@ -1372,19 +1879,47 @@ server <- function(input, output, session) {
     
     y_label <- if (settings$log_scale) "ln(CPM + 1)" else "Counts per million"
     
+    automatic_limits <- range(
+      data$plotted_expression,
+      finite = TRUE
+    )
+    automatic_limits[[1]] <- 0
+    expression_limits <- if (settings$automatic_expression_limits) {
+      automatic_limits
+    } else {
+      c(
+        suppressWarnings(as.numeric(settings$expression_minimum)),
+        suppressWarnings(as.numeric(settings$expression_maximum))
+      )
+    }
+    validate(need(
+      length(expression_limits) == 2 &&
+        all(is.finite(expression_limits)) &&
+        expression_limits[[1]] < expression_limits[[2]],
+      "The expression minimum must be smaller than the expression maximum."
+    ))
+    
     if (settings$plot_type == "trajectory") {
-      data <- factor_field(data, settings$facet_variable)
-      data <- factor_field(data, settings$color_variable)
-      age_position_lookup <- capped_age_positions(
-        data[[settings$progression_variable]],
+      facet_enabled <- !identical(settings$facet_variable, "none")
+      color_enabled <- !identical(settings$color_variable, "none")
+      
+      if (facet_enabled) {
+        data <- factor_field(data, settings$facet_variable)
+      }
+      if (color_enabled) {
+        data <- factor_field(data, settings$color_variable)
+      } else {
+        data$plot_color_group <- "All data"
+      }
+      
+      progression <- progression_positions(
+        data,
+        settings$progression_variable,
         maximum_step = 3
       )
       
-      age_labels <- names(age_position_lookup)
-      age_breaks <- unname(age_position_lookup)
-      
       data$progression_value <- unname(
-        age_position_lookup[
+        progression$lookup[
           as.character(data[[settings$progression_variable]])
         ]
       )
@@ -1392,25 +1927,39 @@ server <- function(input, output, session) {
       plot_data <- data |>
         filter(
           is.finite(progression_value),
-          is.finite(plotted_expression),
-          !is.na(.data[[settings$facet_variable]]),
-          !is.na(.data[[settings$color_variable]])
+          is.finite(plotted_expression)
         )
+      
+      if (facet_enabled) {
+        plot_data <- plot_data |>
+          filter(!is.na(.data[[settings$facet_variable]]))
+      }
+      if (color_enabled) {
+        plot_data <- plot_data |>
+          filter(!is.na(.data[[settings$color_variable]]))
+      }
       
       validate(
         need(nrow(plot_data) >= 2, "Too few observations remain."),
         need(
           n_distinct(plot_data$progression_value) >= 2,
-          "At least two ages are required."
+          "At least two progression values are required."
         )
       )
+      
+      color_field <- if (color_enabled) {
+        settings$color_variable
+      } else {
+        "plot_color_group"
+      }
       
       plot <- ggplot(
         plot_data,
         aes(
           x = progression_value,
           y = plotted_expression,
-          color = .data[[settings$color_variable]]
+          color = .data[[color_field]],
+          group = .data[[color_field]]
         )
       )
       
@@ -1435,29 +1984,64 @@ server <- function(input, output, session) {
         )
       }
       
-      plot +
-        manual_color_scale(plot_data, settings$color_variable, "color") +
-        scale_x_continuous(breaks = age_breaks, labels = age_labels) +
-        facet_wrap(
-          vars(.data[[settings$facet_variable]]),
-          scales = "fixed",
-          drop = TRUE
+      if (color_enabled) {
+        plot <- plot + manual_color_scale(
+          plot_data,
+          settings$color_variable,
+          "color"
+        )
+      } else {
+        plot <- plot + scale_color_manual(
+          values = c("All data" = "#214E68"),
+          guide = "none"
+        )
+      }
+      
+      plot <- plot +
+        scale_x_continuous(
+          breaks = progression$breaks,
+          labels = progression$labels,
+          limits = progression$limits
+        ) +
+        scale_y_continuous(
+          limits = expression_limits,
+          oob = scales::squish
         ) +
         labs(
-          x = "Developmental age",
+          x = settings$progression_variable,
           y = y_label,
-          color = settings$color_variable
+          color = if (color_enabled) settings$color_variable else NULL
         ) +
         theme_minimal(base_size = 11) +
         theme(
           axis.text.x = element_text(angle = 45, hjust = 1),
           strip.text = element_text(face = "bold", size = 9),
-          legend.position = "bottom"
+          legend.position = if (color_enabled) "bottom" else "none"
         )
+      
+      if (facet_enabled) {
+        plot <- plot + facet_wrap(
+          vars(.data[[settings$facet_variable]]),
+          scales = "fixed",
+          drop = TRUE
+        )
+      }
+      
+      plot
       
     } else if (settings$plot_type == "heatmap") {
       plot_data <- summarized_data()
-      ggplot(
+      midpoint <- mean(expression_limits)
+      plot_data <- plot_data |>
+        mutate(
+          count_text_color = if_else(
+            expression >= midpoint,
+            "white",
+            "black"
+          )
+        )
+      
+      plot <- ggplot(
         plot_data,
         aes(
           x = .data[[settings$x_variable]],
@@ -1466,7 +2050,12 @@ server <- function(input, output, session) {
         )
       ) +
         geom_tile(color = "white", linewidth = 0.2) +
-        scale_fill_viridis_c(option = "C", name = y_label) +
+        scale_fill_viridis_c(
+          option = "C",
+          name = y_label,
+          limits = expression_limits,
+          oob = scales::squish
+        ) +
         labs(x = settings$x_variable, y = settings$second_dimension) +
         theme_minimal(base_size = 11) +
         theme(
@@ -1474,21 +2063,44 @@ server <- function(input, output, session) {
           axis.text.x = element_text(angle = 55, hjust = 1)
         )
       
+      if (settings$show_heatmap_counts) {
+        plot <- plot + geom_text(
+          aes(
+            label = n_observations,
+            color = count_text_color
+          ),
+          size = 3,
+          show.legend = FALSE
+        ) +
+          scale_color_identity()
+      }
+      
+      plot
+      
     } else if (settings$plot_type == "dot") {
       plot_data <- summarized_data() |>
         mutate(
+          bounded_expression = scales::squish(
+            expression,
+            range = expression_limits
+          ),
           size_expression = pmax(
             if (settings$log_scale) {
-              expression
+              bounded_expression
             } else {
-              log1p(expression)
+              log1p(bounded_expression)
             },
             0.5
           )
         )
       
       maximum_size_expression <- max(
-        plot_data$size_expression,
+        if (settings$log_scale) {
+          expression_limits
+        } else {
+          log1p(expression_limits)
+        },
+        0.5,
         na.rm = TRUE
       )
       
@@ -1502,10 +2114,16 @@ server <- function(input, output, session) {
         )
       ) +
         geom_point(alpha = 0.9) +
-        scale_color_viridis_c(option = "C", name = y_label) +
+        scale_color_viridis_c(
+          option = "C",
+          name = y_label,
+          limits = expression_limits,
+          oob = scales::squish
+        ) +
         scale_size_area(
           name = "ln(CPM + 1)",
           limits = c(0, maximum_size_expression),
+          oob = scales::squish,
           max_size = 9
         ) +
         labs(x = settings$x_variable, y = settings$second_dimension) +
@@ -1574,6 +2192,10 @@ server <- function(input, output, session) {
           scales = "fixed",
           drop = TRUE
         ) +
+        scale_y_continuous(
+          limits = expression_limits,
+          oob = scales::squish
+        ) +
         labs(x = settings$x_variable, y = y_label) +
         theme_minimal(base_size = 11) +
         theme(
@@ -1596,13 +2218,22 @@ server <- function(input, output, session) {
     }
     
     if (settings$plot_type == "trajectory") {
+      facet_note <- if (identical(settings$facet_variable, "none")) {
+        ""
+      } else {
+        paste0(" by ", settings$facet_variable)
+      }
+      color_note <- if (identical(settings$color_variable, "none")) {
+        ""
+      } else {
+        paste0(" (colored by ", settings$color_variable, ")")
+      }
       paste0(
         loaded_gene(),
-        " across developmental age by ",
-        settings$facet_variable,
-        " (colored by ",
-        settings$color_variable,
-        ")",
+        " across ",
+        settings$progression_variable,
+        facet_note,
+        color_note,
         zero_note
       )
     } else {
