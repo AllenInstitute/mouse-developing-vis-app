@@ -1,0 +1,10 @@
+name: dev_mouse_gene_exploration
+title: Developing Mouse Visual Cortex Gene Expression Viewer
+username: jeremym@alleninstitute.org
+account: jeremym@alleninstitute.org
+server: molgen-shiny
+hostUrl: https://molgen-shiny.org/__api__
+appId: 56
+bundleId: 20263
+url: https://molgen-shiny.org/dev_mouse_gene_exploration/
+version: 1

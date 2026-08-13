@@ -6,3 +6,4 @@ renv
 renv/library
 renv/staging
 rsconnect
+manifest.json
