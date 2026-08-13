@@ -1,4 +1,4 @@
-# hash:sha256:3824eca4e65a6af463f381799e66cb9ed98e3daf88293bd56fc4dd11a6733a9a
+# hash:sha256:c56b08d0fc74c0407d7b660341859f9fcdf56fbbe9afc141777c777f89517bfd
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -9,11 +9,10 @@ COPY git-ask-pass /
 ENV LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
 
 RUN conda install -y \
-        libcurl \
+        libcurl==8.18.0 \
         libgcc-ng==16.1.0 \
         libstdcxx-ng==16.1.0 \
         r-arrow==21.0.0 \
-        r-curl \
     && conda clean -ya
 
 RUN --mount=type=secret,id=git-access-token \
@@ -38,7 +37,8 @@ RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
     && Rscript -e 'remotes::install_version("cachem", "1.1.0")' \
     && Rscript -e 'remotes::install_version("DT", "0.34.0")' \
     && Rscript -e 'remotes::install_version("renv", "1.2.4")' \
-    && Rscript -e 'remotes::install_version("rsconnect", "1.10.1")'
+    && Rscript -e 'remotes::install_version("rsconnect", "1.10.1")' \
+    && Rscript -e 'remotes::install_version("curl", "7.1.0")'
 
 ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 

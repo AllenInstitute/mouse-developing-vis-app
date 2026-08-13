@@ -11,7 +11,8 @@
 		"conda": {
 			"packages": [
 				{
-					"name": "libcurl"
+					"name": "libcurl",
+					"version": "8.18.0"
 				},
 				{
 					"name": "libgcc-ng",
@@ -24,9 +25,6 @@
 				{
 					"name": "r-arrow",
 					"version": "21.0.0"
-				},
-				{
-					"name": "r-curl"
 				}
 			]
 		},
@@ -105,6 +103,10 @@
 				{
 					"name": "rsconnect",
 					"version": "1.10.1"
+				},
+				{
+					"name": "curl",
+					"version": "7.1.0"
 				}
 			],
 			"use_rcache": true
