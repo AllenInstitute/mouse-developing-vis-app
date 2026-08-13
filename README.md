@@ -1,25 +1,5 @@
-# mouse-aging-app
+# Developing Mouse Visual Cortex Gene Expression Viewer 
 
-Code and reproducible workflows for building a pseudobulk gene-expression resource and interactive viewer for the Developing Mouse Visual Cortex dataset from the Allen Brain Cell Atlas. **You can access the app [HERE](https://molgen-shiny.org/dev_mouse_gene_exploration/).**
+The <b><a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank">Developing Mouse Visual Cortex Gene Expression Viewer</a></b> is an interactive R Shiny application for exploring pseudobulk gene expression across developmental age, cell type, library, and anatomical metadata in the developing mouse visual cortex. Users can identify candidate genes from a sortable statistics table, retrieve one gene at a time from public AWS storage, filter the data, and generate trajectory, heatmap, dot, or violin plots.
 
-## Current workflow
-
-The first stage creates a pseudobulk AnnData (`.h5ad`) file from the raw single-cell count matrix. Expression values are summed for each combination of:
-
-- `library_label`
-- `cluster_alias`
-
-Each pseudobulk observation retains representative library, donor, and taxonomy metadata and includes `number_of_cells`, the number of cells contributing to that observation.
-
-## Repository structure
-
-```text
-.
-├── code/
-│   ├── create_dev_mouse_vis_cortex_pseudobulk.py
-│   └── run
-├── data/
-│   └── .gitkeep
-├── .gitignore
-├── README.md
-└── requirements.txt
+# [CLICK HERE TO VISIT THE GITHUB.IO LANDING PAGE!](https://alleninstitute.github.io/mouse-aging-app/)
