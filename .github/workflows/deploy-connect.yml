@@ -1,0 +1,104 @@
+name: Deploy Mouse Aging App to Posit Connect
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "code/shiny/**"
+      - ".github/workflows/deploy-connect.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-mouse-aging-app
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+
+    env:
+      RENV_PATHS_ROOT: ~/.cache/R/renv
+      RENV_CONFIG_REPOS_OVERRIDE: https://cloud.r-project.org
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.3.3"
+          use-public-rspm: true
+
+      - name: Restore renv environment
+        uses: r-lib/actions/setup-renv@v2
+        with:
+          working-directory: code/shiny
+          cache-version: 1
+
+      - name: Install rsconnect
+        shell: Rscript {0}
+        run: |
+          if (!requireNamespace("rsconnect", quietly = TRUE)) {
+            install.packages(
+              "rsconnect",
+              repos = "https://cloud.r-project.org"
+            )
+          }
+
+      - name: Generate deployment manifest
+        shell: Rscript {0}
+        run: |
+          setwd("code/shiny")
+
+          options(
+            repos = c(
+              CRAN = "https://cloud.r-project.org"
+            )
+          )
+
+          app_files <- c(
+            "app.R",
+            "renv.lock",
+            list.files(
+              "www",
+              recursive = TRUE,
+              full.names = TRUE
+            )
+          )
+
+          rsconnect::writeManifest(
+            appDir = ".",
+            appFiles = app_files,
+            appPrimaryDoc = "app.R",
+            dependencyResolution = "strict",
+            packageRepositoryResolutionR = "lax",
+            verbose = TRUE
+          )
+
+          manifest_text <- paste(
+            readLines("manifest.json", warn = FALSE),
+            collapse = "\n"
+          )
+
+          stopifnot(
+            !grepl(
+              "codeocean.internal",
+              manifest_text,
+              fixed = TRUE
+            )
+          )
+
+      - name: Deploy to Posit Connect
+        uses: posit-dev/connect-actions/deploy@main
+        with:
+          connect-server: https://molgen-shiny.org
+          connect-api-key: ${{ secrets.CONNECT_API_KEY }}
+          content-guid: 3906a801-fab5-41e4-9c78-d7ce47cc0065
+          path: code/shiny
+          draft: false
