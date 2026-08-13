@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Developing Mouse Visual Cortex Gene Expression Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      display: flex;
+      line-height: 1.6;
+      background: #ffffff;
+    }
+    .sidebar {
+      width: 300px;
+      min-width: 250px;
+      background-color: #B3C1CD;
+      padding: 20px;
+      overflow-y: auto;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      border-right: 1px solid #ccc;
+    }
+    .sidebar-logo {
+      display: block;
+      width: 210px;
+      max-height: 145px;
+      object-fit: contain;
+      margin: 8px auto 14px;
+    }
+    .sidebar ul { list-style: none; padding: 0; margin-top: 20px; }
+    .sidebar li { margin-bottom: 8px; }
+    .sidebar li a {
+      text-decoration: none;
+      color: #003057;
+      display: block;
+      padding: 2px;
+      border-radius: 3px;
+      transition: background-color 0.2s;
+    }
+    .sidebar li a:hover { background-color: rgba(0, 48, 87, 0.1); }
+    .sidebar-h2 { font-weight: bold; font-size: 1em; padding-left: 0; }
+    .sidebar-h3 { font-weight: normal; font-size: 0.9em; padding-left: 20px; }
+    .sidebar-h4 { font-weight: normal; font-size: 0.85em; padding-left: 0; }
+    .main-content {
+      flex-grow: 1;
+      padding: 20px 40px;
+      overflow-y: auto;
+      height: 100vh;
+      color: #333;
+    }
+    h1, h2, h3, h4 {
+      color: #003057;
+      scroll-margin-top: 20px;
+      border-bottom: 1px solid #eaecef;
+      padding-bottom: 0.3em;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+    h1 { border-bottom-width: 2px; }
+    h4 { border-bottom: none; margin-top: 18px; }
+    a { color: #0366d6; }
+    hr {
+      height: 5px;
+      border: none;
+      background-color: #003057;
+      width: 50%;
+      margin: 24px auto 24px 0;
+    }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 85%;
+      padding: 0.2em 0.4em;
+      background-color: rgba(27,31,35,0.05);
+      border-radius: 3px;
+    }
+    pre {
+      padding: 16px;
+      overflow: auto;
+      font-size: 85%;
+      line-height: 1.45;
+      background-color: #f6f8fa;
+      border-radius: 3px;
+      margin-bottom: 16px;
+    }
+    pre code { padding: 0; background: transparent; }
+    ul, ol { margin: 0 0 14px 24px; }
+    li { margin-bottom: 4px; }
+    p { margin-bottom: 14px; }
+    blockquote {
+      border-left: 4px solid #d0d7de;
+      padding: 8px 16px;
+      color: #57606a;
+      margin: 0 0 16px;
+      background: #f6f8fa;
+      border-radius: 0 6px 6px 0;
+    }
+    blockquote p { margin-bottom: 0; }
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .page-header h1 {
+      border-bottom: none;
+      margin: 0;
+      padding: 0;
+      flex: 1;
+    }
+    .header-rule {
+      border-bottom: 2px solid #eaecef;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+    }
+    .header-logo { height: 55px; max-width: 150px; object-fit: contain; }
+    .app-logo { display: inline-block; margin: 12px 0; }
+    .app-logo img { display: block; max-width: 100%; height: 185px; object-fit: contain; }
+    .launch-button {
+      display: inline-block;
+      padding: 10px 18px;
+      margin: 6px 0 12px;
+      background: #27ae60;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: 700;
+    }
+    .launch-button:hover { background: #1f8f4e; }
+    .note {
+      border-left: 4px solid #0dc5c1;
+      background: #eefafa;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 850px) {
+      body { display: block; }
+      .sidebar { position: relative; width: 100%; height: auto; }
+      .main-content { height: auto; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2 style="color: #003057;">Mouse Visual Cortex Viewer</h2>
+    <img class="sidebar-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex Gene Expression Viewer logo">
+    <ul>
+      <li class="sidebar-h4"><a href="#top">(jump to top)</a></li>
+      <li class="sidebar-h2"><a href="#data">Data</a></li>
+      <li class="sidebar-h3"><a href="#scientific-source">Scientific source</a></li>
+      <li class="sidebar-h3"><a href="#pseudobulk">Pseudobulk expression</a></li>
+      <li class="sidebar-h3"><a href="#parquet">Gene-level Parquet files</a></li>
+      <li class="sidebar-h3"><a href="#metadata">Metadata and value sets</a></li>
+      <li class="sidebar-h3"><a href="#aws">AWS storage and access</a></li>
+      <li class="sidebar-h2"><a href="#using-the-viewer">Using the viewer</a></li>
+      <li class="sidebar-h3"><a href="#gene">Gene</a></li>
+      <li class="sidebar-h3"><a href="#filter-and-scale">Filter and scale</a></li>
+      <li class="sidebar-h3"><a href="#plot-controls">Plot controls</a></li>
+      <li class="sidebar-h2"><a href="#app-tabs">Application tabs</a></li>
+      <li class="sidebar-h3"><a href="#select-gene">Select gene of interest</a></li>
+      <li class="sidebar-h3"><a href="#plot-gene">Plot gene of interest</a></li>
+      <li class="sidebar-h3"><a href="#trajectory">Trajectory plot</a></li>
+      <li class="sidebar-h3"><a href="#heatmap">Heatmap</a></li>
+      <li class="sidebar-h3"><a href="#dotplot">Dot plot</a></li>
+      <li class="sidebar-h3"><a href="#violin">Violin plot</a></li>
+      <li class="sidebar-h2"><a href="#running">Running the app</a></li>
+      <li class="sidebar-h3"><a href="#requirements">Requirements</a></li>
+      <li class="sidebar-h3"><a href="#setup">Local setup</a></li>
+      <li class="sidebar-h3"><a href="#run-app">Run the app</a></li>
+      <li class="sidebar-h2"><a href="#repo-structure">Repository structure</a></li>
+      <li class="sidebar-h2"><a href="#citation">Citation</a></li>
+      <li class="sidebar-h2"><a href="#feedback">Feedback and support</a></li>
+      <li class="sidebar-h2"><a href="#acknowledgements">Acknowledgements</a></li>
+    </ul>
+  </div>
+
+  <div class="main-content">
+    <div class="header-rule">
+      <div class="page-header" id="top">
+        <img class="header-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex logo">
+        <h1>Developing Mouse Visual Cortex Gene Expression Viewer</h1>
+        <img class="header-logo" src="code/shiny/www/allen_institute_logo.svg" alt="Allen Institute logo">
+      </div>
+    </div>
+
+    <p>
+      The <strong>Developing Mouse Visual Cortex Gene Expression Viewer</strong> is an interactive R Shiny application for exploring pseudobulk gene expression across developmental age, cell type, library, and anatomical metadata in the developing mouse visual cortex. Users can identify candidate genes from a sortable statistics table, retrieve one gene at a time from public AWS storage, filter the data, and generate trajectory, heatmap, dot, or violin plots.
+    </p>
+    <p>
+      The underlying resource is part of the <a href="https://brain-map.org/bkp/explore/abc-atlas" target="_blank" rel="noopener noreferrer">Allen Brain Cell Atlas</a>, an open-science platform for visualizing and analyzing multimodal single-cell data across the mammalian brain.
+    </p>
+    <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">
+      <i class="fas fa-arrow-up-right-from-square"></i> Launch the interactive viewer
+    </a>
+    <br>
+    <a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer" class="app-logo">
+      <img src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex Gene Expression Viewer logo">
+    </a>
+
+    <br><hr>
+    <h2 id="data"><i class="fas fa-database"></i> Data</h2>
+
+    <h3 id="scientific-source">Scientific source</h3>
+    <p>The viewer is based on the data resource associated with:</p>
+    <blockquote>
+      <p>
+        Gao, Y., van Velthoven, C. T. J., Lee, C., et al. <strong>Continuous cell-type diversification in mouse visual cortex development.</strong> <em>Nature</em> (2025). <a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">https://doi.org/10.1038/s41586-025-09644-1</a>
+      </p>
+    </blockquote>
+    <p>
+      The study presents a high-resolution transcriptomic and epigenomic cell-type atlas spanning embryonic through postnatal mouse visual cortex development. The version exposed through ABC Atlas Access contains 568,654 single cells and a four-level taxonomy with 15 classes, 40 subclasses, 148 clusters, and 714 subclusters.
+    </p>
+    <p>
+      Source documentation, notebooks, manifests, expression matrices, metadata, and taxonomy annotations are available through the <a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex dataset documentation</a> and the <a href="https://alleninstitute.github.io/abc_atlas_access/" target="_blank" rel="noopener noreferrer">ABC Atlas Access Python package</a>.
+    </p>
+
+    <h3 id="pseudobulk">Pseudobulk expression</h3>
+    <p>
+      The app is built from a pseudobulk AnnData (<code>.h5ad</code>) file generated from the raw Developing Mouse Visual Cortex single-cell count matrix. Raw counts were summed separately for each combination of <code>library_label</code> and <code>cluster_alias</code>. Consequently, each row represents one library-by-cluster pseudobulk observation, each column represents a gene, and each matrix value is the summed raw count for that gene across all contributing cells.
+    </p>
+    <ul>
+      <li><code>number_of_cells</code> records the number of cells contributing to each pseudobulk observation.</li>
+      <li>Observation metadata retain the corresponding library, donor, developmental age, anatomical, and cell-taxonomy annotations.</li>
+      <li>Gene metadata and symbols are retained in the AnnData <code>var</code> table.</li>
+      <li>The large source files and intermediate ABC Atlas cache are not distributed through GitHub.</li>
+    </ul>
+
+    <h3 id="parquet">Gene-level Parquet files</h3>
+    <p>
+      The pseudobulk H5AD was converted into a gene-partitioned Parquet resource. Each gene is stored under <code>counts_by_gene/gene=&lt;gene_key&gt;/</code>, with a Parquet file containing <code>sample_id</code> and <code>summed_counts</code>. The app opens only the selected gene directory and supports one or multiple Parquet files within that directory. This avoids opening the complete gene-by-pseudobulk matrix during application startup or gene retrieval.
+    </p>
+    <p>
+      Expression is displayed as counts per million (CPM). A row-aligned <code>CPM_scaling.csv</code> file stores the scaling factor for each pseudobulk observation:
+    </p>
+    <pre><code>CPM scaling factor = 1,000,000 / total counts across all genes in the pseudobulk observation
+CPM for a selected gene = summed counts × CPM scaling factor</code></pre>
+    <p>Users may display either CPM or <code>ln(CPM + 1)</code>, and may optionally exclude zero-count observations.</p>
+
+    <h3 id="metadata">Metadata and value sets</h3>
+    <p>The app uses supporting files under the metadata directory:</p>
+    <ul>
+      <li><code>obs_metadata.parquet</code> contains pseudobulk observation metadata and the unique <code>sample_id</code> used to join gene counts.</li>
+      <li><code>gene_map.parquet</code> maps gene symbols to source columns and filesystem-safe gene keys.</li>
+      <li><code>CPM_scaling.csv</code> contains <code>library_label</code> and the row-aligned CPM scaling factor.</li>
+      <li><code>value_sets.csv</code> supplies authoritative label order and color values for taxonomy, age, anatomy, and other categorical metadata fields.</li>
+    </ul>
+    <p>
+      The cell taxonomy includes class, subclass, cluster, and subcluster assignments. Plot, facet, legend, dropdown, and filtering order are drawn from <code>value_sets.csv</code> wherever a matching specification is available; values not represented in that file are retained rather than discarded.
+    </p>
+
+    <h3 id="aws">AWS storage and access</h3>
+    <p>
+      Application-ready data are stored in a public Amazon S3 prefix. The app anonymously reads lightweight metadata and statistics at startup, then retrieves only the selected gene partition during interactive use. No AWS credentials are required to use or deploy the viewer.
+    </p>
+    <p>
+      The current test data reside at <a href="https://sea-ad-single-cell-profiling.s3.amazonaws.com/index.html#Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/" target="_blank" rel="noopener noreferrer">the public TEST_dev_mouse S3 prefix</a>.
+    </p>
+
+    <br><hr>
+    <h2 id="using-the-viewer"><i class="fas fa-computer-mouse"></i> Using the viewer</h2>
+    <h3>Left control panel</h3>
+    <p>The left panel controls gene retrieval, metadata filtering, expression scaling, and plot configuration.</p>
+
+    <h3 id="gene">Gene</h3>
+    <ol>
+      <li>Enter or search for a gene symbol, or select a gene from the statistics table.</li>
+      <li>Select <strong>Get gene data</strong>.</li>
+      <li>The app opens the selected gene partition from S3, joins counts to pseudobulk metadata by <code>sample_id</code>, calculates CPM, and stores the result in an in-memory cache.</li>
+    </ol>
+    <p>Once gene data have been loaded, changing filters or plot settings does not require another S3 request during the same session.</p>
+
+    <h3 id="filter-and-scale">Filter and scale</h3>
+    <ul>
+      <li><strong>Filter metadata</strong> selects a metadata field.</li>
+      <li><strong>Include values</strong> restricts the plot to selected values from that field.</li>
+      <li><strong>Discard observations with zero counts</strong> removes pseudobulk observations in which the selected gene has no counts.</li>
+      <li><strong>Plot ln(CPM + 1)</strong> switches between log-transformed and untransformed CPM.</li>
+    </ul>
+    <p>Plotting choices are recalculated after filtering, so high-cardinality fields may become available when the current subset contains a manageable number of values.</p>
+
+    <h3 id="plot-controls">Plot controls</h3>
+    <ul>
+      <li><strong>Plot type</strong> selects trajectory, heatmap, dot, or violin output.</li>
+      <li>Plot-specific controls select developmental age, axes, facets, color, trend line, and observation display.</li>
+      <li><strong>Generate plot</strong> applies the current settings and opens the plotting tab.</li>
+      <li><strong>Reset plot options</strong> restores the default settings.</li>
+    </ul>
+
+    <br><hr>
+    <h2 id="app-tabs"><i class="fas fa-chart-bar"></i> Application tabs</h2>
+
+    <h3 id="select-gene">Select gene of interest</h3>
+    <p>
+      This tab contains a searchable and sortable table of gene-level exploratory statistics. Numeric columns remain numeric for sorting and filtering and are displayed to three decimal places. The table is initially sorted in descending order by the first numeric expression column. Selecting a row places that gene into the <strong>Gene symbol</strong> control.
+    </p>
+    <p>The table contains the following compact summaries:</p>
+    <ul>
+      <li><strong><code>ln(mean_CPM+1)</code></strong>: natural log of the overall mean CPM plus one.</li>
+      <li><strong><code>age_log2fc</code></strong>: log2 fold change comparing the mean CPM of postnatal observations at P40 or older with the mean CPM of all embryonic observations.</li>
+      <li><strong><code>age_log2fc(&gt;0)</code></strong>: the same developmental comparison after excluding zero values within each group.</li>
+      <li><strong><code>max_ROI</code></strong>: the region-of-interest label with the highest mean CPM.</li>
+      <li><strong><code>log2fc_ROI</code></strong>: log2 fold change of the maximum ROI mean relative to the arithmetic mean of ROI-level means.</li>
+      <li><strong><code>log2fc_ROI(&gt;0)</code></strong>: the analogous ROI statistic after excluding zero observations.</li>
+      <li><strong><code>max_subclass</code></strong>: the subclass with the highest mean CPM.</li>
+      <li><strong><code>log2fc_subclass</code></strong>: log2 fold change of the maximum subclass mean relative to the arithmetic mean of subclass-level means.</li>
+      <li><strong><code>log2fc_subclass(&gt;0)</code></strong>: the analogous subclass statistic after excluding zero observations.</li>
+    </ul>
+    <div class="note"><strong>Important:</strong> These statistics are intended to direct exploration in the viewer. They are not a replacement for the statistical analyses reported in the source study.</div>
+
+    <h3 id="plot-gene">Plot gene of interest</h3>
+    <p>This tab displays the requested gene using one of four visualization types. The plot region resizes with the browser window, and faceted plots use matching y-axes to support comparisons.</p>
+
+    <h4 id="trajectory">Trajectory across development</h4>
+    <p>
+      The trajectory plot displays expression across developmental age. Age values are ordered biologically from embryonic to postnatal stages. Visual spacing between adjacent ages is capped at the equivalent of three days, preserving small developmental steps while compressing large unsampled intervals.
+    </p>
+    <ul>
+      <li><strong>Progression axis</strong> defaults to developmental age.</li>
+      <li><strong>Facet by</strong> separates eligible cell-type, anatomical, or other categorical groups.</li>
+      <li><strong>Color by</strong> overlays an additional categorical field.</li>
+      <li><strong>Trend line</strong> offers LOESS, linear fit, or no fitted line.</li>
+      <li><strong>Show individual observations</strong> displays the underlying pseudobulk values.</li>
+    </ul>
+    <p>Trajectory color fields are limited to at most 15 values and facet fields to at most 30 values in the currently filtered data.</p>
+
+    <h4 id="heatmap">Heatmap of mean expression</h4>
+    <p>The heatmap displays mean expression for every observed combination of two selected metadata dimensions.</p>
+    <ul>
+      <li>The default horizontal axis is <code>donor_age</code>.</li>
+      <li>The default second dimension is <code>subclass</code>.</li>
+      <li>Tile color represents mean expression.</li>
+      <li>Heatmap dimensions do not have a category-count restriction.</li>
+    </ul>
+
+    <h4 id="dotplot">Dot plot of mean expression</h4>
+    <p>The dot plot uses the same two-dimensional grouping as the heatmap.</p>
+    <ul>
+      <li>The default horizontal axis is <code>donor_age</code>.</li>
+      <li>The default second dimension is <code>subclass</code>.</li>
+      <li>Both dot color and dot area represent mean expression.</li>
+      <li>A minimum plotted size equivalent to <code>ln(CPM + 1) = 0.5</code> ensures that every observed combination remains visible.</li>
+      <li>Dot-plot dimensions do not have a category-count restriction.</li>
+    </ul>
+
+    <h4 id="violin">Violin plot with observations</h4>
+    <p>The violin plot shows the distribution of pseudobulk expression values across groups and facets.</p>
+    <ul>
+      <li>The horizontal axis defines groups within each panel.</li>
+      <li>The second dimension defines facets.</li>
+      <li>Small transparent black points show individual pseudobulk observations.</li>
+      <li>The white point and error bar show the group mean and standard error.</li>
+      <li>Violin fills, axis levels, facets, and legend order use <code>value_sets.csv</code>.</li>
+    </ul>
+    <p>Groups with fewer than two observations are omitted, and violin dimensions are limited to fields with at most 30 values after filtering.</p>
+
+    <br><hr>
+    <h2 id="running"><i class="fas fa-play-circle"></i> Running the app</h2>
+    <p>
+      Most users should use the <strong><a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">hosted Developing Mouse Visual Cortex Gene Expression Viewer</a></strong>. The repository also supports local development and reproducible deployment.
+    </p>
+
+    <h3 id="requirements">Requirements</h3>
+    <ul>
+      <li>R 4.3.3 or a compatible R installation;</li>
+      <li>S3 support in the <code>arrow</code> package;</li>
+      <li><code>shiny</code>, <code>bslib</code>, <code>arrow</code>, <code>dplyr</code>, <code>ggplot2</code>, <code>scales</code>, <code>shinycssloaders</code>, <code>cachem</code>, and <code>DT</code>;</li>
+      <li>internet access to the public AWS data prefix.</li>
+    </ul>
+    <p>The app uses <code>renv.lock</code> to record tested R package versions for local reproduction and automated Posit Connect deployment.</p>
+
+    <h3 id="setup">Local setup</h3>
+    <ol>
+      <li>Clone the <a href="https://github.com/AllenInstitute/mouse-aging-app" target="_blank" rel="noopener noreferrer">mouse-aging-app GitHub repository</a>.</li>
+      <li>Open RStudio in <code>code/shiny/</code>.</li>
+      <li>Install <code>renv</code> if needed.</li>
+      <li>Restore the tested dependencies from <code>renv.lock</code>.</li>
+    </ol>
+    <pre><code>install.packages("renv")
+renv::restore()</code></pre>
+
+    <h3 id="run-app">Run the app</h3>
+    <pre><code>setwd("code/shiny")
+shiny::runApp(".")</code></pre>
+    <p>Alternatively, open <code>app.R</code> in RStudio and select <strong>Run App</strong>.</p>
+
+    <br><hr>
+    <h2 id="repo-structure"><i class="fas fa-folder-open"></i> Repository structure</h2>
+    <p>The repository contains both data-preparation scripts and the deployable Shiny application:</p>
+    <pre><code>.
+├── .github/
+│   └── workflows/
+│       └── deploy-connect.yml
+├── code/
+│   ├── create_dev_mouse_vis_cortex_pseudobulk.py
+│   ├── create_mouse_aging_parquet.py
+│   ├── create_statistics.py
+│   ├── create_value_sets.py
+│   ├── run
+│   └── shiny/
+│       ├── app.R
+│       ├── renv.lock
+│       └── www/
+│           ├── Developing_Mouse_Visual_Cortex_logo.png
+│           └── allen_institute_logo.svg
+├── data/
+│   └── .gitkeep
+├── index.html
+├── README.md
+└── requirements.txt</code></pre>
+    <p>Large expression files, pseudobulk H5AD files, Parquet data, metadata, and statistics remain outside GitHub in Code Ocean Data Assets and public AWS storage.</p>
+
+    <br><hr>
+    <h2 id="citation"><i class="fas fa-book"></i> Citation</h2>
+    <p>If you use the viewer or underlying data, please cite the source study:</p>
+    <blockquote>
+      <p>
+        Gao, Y., van Velthoven, C. T. J., Lee, C., et al. <strong>Continuous cell-type diversification in mouse visual cortex development.</strong> <em>Nature</em> (2025). <a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">https://doi.org/10.1038/s41586-025-09644-1</a>
+      </p>
+    </blockquote>
+    <p>Please also report the version or Git commit of the viewer and the date on which the public AWS data were accessed.</p>
+
+    <br><hr>
+    <h2 id="feedback"><i class="fas fa-comments"></i> Feedback and support</h2>
+    <p>
+      Questions, bug reports, and suggestions are welcome. Please <a href="https://github.com/AllenInstitute/mouse-aging-app/issues" target="_blank" rel="noopener noreferrer">open a GitHub issue</a> or contact <a href="mailto:jeremym@alleninstitute.org">Jeremy Miller</a>.
+    </p>
+
+    <h2 id="acknowledgements"><i class="fas fa-hands-clapping"></i> Acknowledgements</h2>
+    <p>
+      The underlying resource was generated by Allen Institute investigators and collaborators through extensive experimental, computational, taxonomy, data-access, and publication efforts. We acknowledge the teams responsible for data generation, quality control, analysis, taxonomy construction, ABC Atlas Access, public cloud hosting, Code Ocean workflows, and Posit Connect deployment.
+    </p>
+  </div>
+</body>
+</html>
