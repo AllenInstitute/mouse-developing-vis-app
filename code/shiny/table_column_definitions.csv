@@ -1,0 +1,11 @@
+column_names,column_definitions
+gene_symbol,Gene symbol
+ln(mean_CPM+1),Average log-normalized gene expression (counts per million + 1) across all cells in this data set.
+age_log2fc,log2 fold change comparing the mean CPM of postnatal observations at P40 or older with the mean CPM of all embryonic observations.
+age_log2fc(>0),log2 fold change comparing the mean CPM of postnatal observations at P40 or older with the mean CPM of all embryonic observations after excluding zero values within each group.
+max_ROI,The brain region-of-interest (ROI) label with the highest mean CPM.
+log2fc_ROI,Log2 fold change of the maximum region of interest (ROI) mean relative to the arithmetic mean of ROI-level means.
+log2fc_ROI(>0),Log2 fold change of the maximum region of interest (ROI) mean relative to the arithmetic mean of ROI-level means after excluding zero observations.
+max_subclass,The subclass with the highest mean CPM.
+log2fc_subclass,Log2 fold change of the maximum subclass mean relative to the arithmetic mean of subclass-level means.
+log2fc_subclass(>0),Log2 fold change of the maximum subclass mean relative to the arithmetic mean of subclass-level means after excluding zero observations.
