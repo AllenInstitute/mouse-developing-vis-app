@@ -993,7 +993,8 @@ ui <- page_sidebar(
             "Trajectory across development" = "trajectory",
             "Heatmap of mean expression" = "heatmap",
             "Dot plot of mean expression" = "dot",
-            "Violin plot with observations" = "violin"
+            "Violin plot with observations" = "violin",
+            "Two-gene correlation" = "correlation"
           ),
           selected = "trajectory"
         ),
@@ -1036,7 +1037,7 @@ ui <- page_sidebar(
           ),
         ),
         conditionalPanel(
-          condition = "input.plot_type != 'trajectory'",
+          condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
           selectInput(
             "x_variable",
             "Horizontal axis",
@@ -1050,48 +1051,112 @@ ui <- page_sidebar(
             selected = default_second
           )
         ),
-        checkboxInput(
-          "log_scale",
-          "Plot ln(CPM + 1)",
-          TRUE
-        ),
-        checkboxInput(
-          "automatic_expression_limits",
-          "Use automatic expression limits",
-          TRUE
-        ),
         conditionalPanel(
-          condition = "!input.automatic_expression_limits",
-          div(
-            class = "expression-scale-row",
-            numericInput(
-              "expression_minimum",
-              "Minimum",
-              value = 0,
-              min = 0
-            ),
-            numericInput(
-              "expression_maximum",
-              "Maximum",
-              value = 1,
-              min = 0
+          condition = "input.plot_type == 'correlation'",
+          selectizeInput(
+            "comparison_gene",
+            "Comparison gene symbol",
+            choices = NULL,
+            selected = NULL,
+            options = list(
+              placeholder = "Type a comparison gene symbol",
+              maxOptions = 50,
+              create = FALSE
             )
-          )
-        ),
-        conditionalPanel(
-          condition = "input.plot_type == 'heatmap'",
+          ),
+          actionButton(
+            "get_comparison_gene_data",
+            "Gene 2nd gene data",
+            class = "btn-outline-primary",
+            width = "100%"
+          ),
+          div(
+            class = "gene-status",
+            textOutput("comparison_gene_status")
+          ),
+          selectInput(
+            "correlation_color_variable",
+            "Color by (maximum 15 values)",
+            choices = c(
+              "All data" = "none",
+              region_field
+            ),
+            selected = default_color
+          ),
           checkboxInput(
-            "show_heatmap_counts",
-            "Show number of observations",
+            "correlation_automatic_limits",
+            "Use automatic axis limits",
+            TRUE
+          ),
+          conditionalPanel(
+            condition = "!input.correlation_automatic_limits",
+            div(
+              class = "expression-scale-row",
+              numericInput(
+                "correlation_axis_minimum",
+                "Minimum",
+                value = 0,
+                min = 0
+              ),
+              numericInput(
+                "correlation_axis_maximum",
+                "Maximum",
+                value = 1,
+                min = 0
+              )
+            )
+          ),
+          checkboxInput(
+            "show_orthogonal_fit",
+            "Show orthogonal fit line",
             TRUE
           )
         ),
         conditionalPanel(
-          condition = "input.plot_type == 'trajectory'",
+          condition = "input.plot_type != 'correlation'",
           checkboxInput(
-            "show_points",
-            "Show individual observations",
+            "log_scale",
+            "Plot ln(CPM + 1)",
             TRUE
+          ),
+          checkboxInput(
+            "automatic_expression_limits",
+            "Use automatic expression limits",
+            TRUE
+          ),
+          conditionalPanel(
+            condition = "!input.automatic_expression_limits",
+            div(
+              class = "expression-scale-row",
+              numericInput(
+                "expression_minimum",
+                "Minimum",
+                value = 0,
+                min = 0
+              ),
+              numericInput(
+                "expression_maximum",
+                "Maximum",
+                value = 1,
+                min = 0
+              )
+            )
+          ),
+          conditionalPanel(
+            condition = "input.plot_type == 'heatmap'",
+            checkboxInput(
+              "show_heatmap_counts",
+              "Show number of observations",
+              TRUE
+            )
+          ),
+          conditionalPanel(
+            condition = "input.plot_type == 'trajectory'",
+            checkboxInput(
+              "show_points",
+              "Show individual observations",
+              TRUE
+            )
           )
         ),
         actionButton(
@@ -1158,6 +1223,11 @@ server <- function(input, output, session) {
   loaded_gene <- reactiveVal(NULL)
   requested_gene <- reactiveVal(default_gene)
   gene_status_message <- reactiveVal("No gene retrieved yet.")
+  comparison_gene_data <- reactiveVal(NULL)
+  loaded_comparison_gene <- reactiveVal(NULL)
+  comparison_gene_status_message <- reactiveVal(
+    "No comparison gene retrieved yet."
+  )
   previous_dimension_plot_type <- reactiveVal(NULL)
   
   output$gene_loaded <- reactive({
@@ -1304,6 +1374,13 @@ server <- function(input, output, session) {
       selected = character(),
       server = TRUE
     )
+    updateSelectizeInput(
+      session,
+      "comparison_gene",
+      choices = available_genes,
+      selected = character(),
+      server = TRUE
+    )
   }, once = TRUE)
   
   observeEvent(input$gene, {
@@ -1418,6 +1495,105 @@ server <- function(input, output, session) {
   })
   
   output$gene_status <- renderText(gene_status_message())
+  
+  observeEvent(input$comparison_gene, {
+    selected_gene <- input$comparison_gene
+    if (identical(input$plot_type, "correlation")) {
+      validate(
+        need(
+          !is.null(input$comparison_gene) &&
+            length(input$comparison_gene) == 1 &&
+            nzchar(input$comparison_gene),
+          "Select a comparison gene."
+        ),
+        need(
+          !is.null(comparison_gene_data()) &&
+            !is.null(loaded_comparison_gene()),
+          paste(
+            "Click 'Get comparison gene data'",
+            "before generating the correlation plot."
+          )
+        ),
+        need(
+          identical(
+            input$comparison_gene,
+            loaded_comparison_gene()
+          ),
+          paste(
+            "The selected comparison gene has not been retrieved.",
+            "Click 'Get comparison gene data'."
+          )
+        ),
+        need(
+          !identical(
+            loaded_gene(),
+            loaded_comparison_gene()
+          ),
+          "Choose two different genes for the correlation plot."
+        )
+      )
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$get_comparison_gene_data, {
+    comparison_gene <- input$comparison_gene
+    req(
+      length(comparison_gene) == 1,
+      nzchar(comparison_gene),
+      comparison_gene %in% available_genes
+    )
+    validate(need(
+      !identical(comparison_gene, loaded_gene()),
+      "Choose a comparison gene different from the primary gene."
+    ))
+    comparison_gene_status_message(
+      paste("Retrieving", comparison_gene, "...")
+    )
+    
+    tryCatch(
+      {
+        loaded <- withProgress(
+          message = paste("Retrieving", comparison_gene),
+          value = 0.25,
+          {
+            result <- read_gene(comparison_gene)
+            incProgress(0.65)
+            result
+          }
+        )
+        comparison_gene_data(loaded)
+        loaded_comparison_gene(comparison_gene)
+        comparison_gene_status_message(
+          paste0(
+            "Loaded ", comparison_gene, " (",
+            comma(nrow(loaded)), " observations)."
+          )
+        )
+      },
+      error = function(e) {
+        comparison_gene_data(NULL)
+        loaded_comparison_gene(NULL)
+        comparison_gene_status_message(
+          paste(
+            "Unable to load ", comparison_gene, ": ",
+            conditionMessage(e)
+          )
+        )
+        showNotification(
+          paste(
+            "Unable to load comparison gene data:",
+            conditionMessage(e)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  })
+  
+  output$comparison_gene_status <- renderText(
+    comparison_gene_status_message()
+  )
   
   automatic_expression_range <- reactive({
     data <- gene_data()
@@ -1667,6 +1843,22 @@ server <- function(input, output, session) {
       choices = color_choices,
       selected = current_color
     )
+    current_correlation_color <- isolate(input$correlation_color_variable)
+    if (!current_correlation_color %in% unname(color_choices)) {
+      current_correlation_color <- if (
+        default_color %in% unname(color_choices)
+      ) {
+        default_color
+      } else {
+        "none"
+      }
+    }
+    updateSelectInput(
+      session,
+      "correlation_color_variable",
+      choices = color_choices,
+      selected = current_correlation_color
+    )
   }, ignoreInit = FALSE)
   
   observeEvent(
@@ -1775,6 +1967,21 @@ server <- function(input, output, session) {
     updateSelectInput(session, "progression_variable", selected = age_field)
     updateSelectInput(session, "facet_variable", selected = default_facet)
     updateSelectInput(session, "color_variable", selected = default_color)
+    updateSelectInput(
+      session,
+      "correlation_color_variable",
+      selected = default_color
+    )
+    updateCheckboxInput(
+      session,
+      "correlation_automatic_limits",
+      value = TRUE
+    )
+    updateCheckboxInput(
+      session,
+      "show_orthogonal_fit",
+      value = TRUE
+    )
     updateSelectInput(session, "smoother", selected = "loess")
     updateCheckboxInput(session, "show_points", value = TRUE)
     updateSelectInput(session, "x_variable", selected = default_x)
@@ -1791,6 +1998,13 @@ server <- function(input, output, session) {
   
   plot_settings <- eventReactive(input$make_plot, {
     req(gene_data(), loaded_gene(), input$plot_type)
+    if (identical(input$plot_type, "correlation")) {
+      req(comparison_gene_data(), loaded_comparison_gene())
+      validate(need(
+        !identical(loaded_gene(), loaded_comparison_gene()),
+        "Choose two different genes for the correlation plot."
+      ))
+    }
     list(
       plot_type = input$plot_type,
       filters = active_filter_specification(),
@@ -1805,6 +2019,14 @@ server <- function(input, output, session) {
       progression_variable = input$progression_variable,
       facet_variable = input$facet_variable,
       color_variable = input$color_variable,
+      correlation_color_variable = input$correlation_color_variable,
+      correlation_automatic_limits = isTRUE(
+        input$correlation_automatic_limits
+      ),
+      correlation_axis_minimum = input$correlation_axis_minimum,
+      correlation_axis_maximum = input$correlation_axis_maximum,
+      show_orthogonal_fit = isTRUE(input$show_orthogonal_fit),
+      comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
       x_variable = input$x_variable,
@@ -1873,6 +2095,83 @@ server <- function(input, output, session) {
     out
   })
   
+  orthogonal_fit <- function(x, y) {
+    complete <- is.finite(x) & is.finite(y)
+    x <- x[complete]
+    y <- y[complete]
+    if (length(x) < 2) {
+      return(NULL)
+    }
+    covariance <- stats::cov(cbind(x, y))
+    decomposition <- eigen(covariance, symmetric = TRUE)
+    direction <- decomposition$vectors[, which.max(decomposition$values)]
+    center <- c(mean(x), mean(y))
+    if (abs(direction[[1]]) < sqrt(.Machine$double.eps)) {
+      return(list(type = "vertical", intercept = center[[1]]))
+    }
+    slope <- direction[[2]] / direction[[1]]
+    list(
+      type = "line",
+      slope = slope,
+      intercept = center[[2]] - slope * center[[1]]
+    )
+  }
+  
+  correlation_analysis <- reactive({
+    settings <- plot_settings()
+    req(identical(settings$plot_type, "correlation"))
+    primary <- gene_data()
+    comparison <- comparison_gene_data()
+    req(primary, comparison)
+    
+    comparison_values <- comparison |>
+      transmute(
+        sample_id = as.character(sample_id),
+        comparison_CPM = as.numeric(CPM)
+      )
+    
+    data <- primary |>
+      inner_join(comparison_values, by = "sample_id")
+    data <- apply_filter_specification(data, settings$filters)
+    if (settings$omit_zero_values) {
+      data <- data |>
+        filter(CPM > 0, comparison_CPM > 0)
+    }
+    data <- data |>
+      mutate(
+        primary_expression = log1p(CPM),
+        comparison_expression = log1p(comparison_CPM)
+      ) |>
+      filter(
+        is.finite(primary_expression),
+        is.finite(comparison_expression)
+      )
+    
+    validate(
+      need(nrow(data) >= 3, "At least three matched observations are required."),
+      need(
+        dplyr::n_distinct(data$primary_expression) >= 2,
+        "The primary gene has no variation in the filtered observations."
+      ),
+      need(
+        dplyr::n_distinct(data$comparison_expression) >= 2,
+        "The comparison gene has no variation in the filtered observations."
+      )
+    )
+    
+    test <- stats::cor.test(
+      data$primary_expression,
+      data$comparison_expression,
+      method = "pearson"
+    )
+    
+    list(
+      data = data,
+      estimate = unname(test$estimate),
+      p_value = test$p.value
+    )
+  })
+  
   output$expression_plot <- renderPlot({
     settings <- plot_settings()
     data <- filtered_data()
@@ -1899,7 +2198,129 @@ server <- function(input, output, session) {
       "The expression minimum must be smaller than the expression maximum."
     ))
     
-    if (settings$plot_type == "trajectory") {
+    if (settings$plot_type == "correlation") {
+      analysis <- correlation_analysis()
+      plot_data <- analysis$data
+      color_field <- settings$correlation_color_variable
+      color_enabled <- !identical(color_field, "none")
+      
+      if (color_enabled) {
+        plot_data <- factor_field(plot_data, color_field)
+        plot_data <- plot_data |>
+          filter(!is.na(.data[[color_field]]))
+      } else {
+        plot_data$correlation_color_group <- "All data"
+        color_field <- "correlation_color_group"
+      }
+      
+      observed_limits <- range(
+        c(
+          plot_data$primary_expression,
+          plot_data$comparison_expression
+        ),
+        finite = TRUE
+      )
+      observed_limits[[1]] <- min(0, observed_limits[[1]])
+      correlation_limits <- if (settings$correlation_automatic_limits) {
+        observed_limits
+      } else {
+        c(
+          suppressWarnings(as.numeric(settings$correlation_axis_minimum)),
+          suppressWarnings(as.numeric(settings$correlation_axis_maximum))
+        )
+      }
+      validate(need(
+        length(correlation_limits) == 2 &&
+          all(is.finite(correlation_limits)) &&
+          correlation_limits[[1]] < correlation_limits[[2]],
+        "The correlation-axis minimum must be smaller than the maximum."
+      ))
+      
+      point_mapping <- aes(
+        x = primary_expression,
+        y = comparison_expression,
+        color = .data[[color_field]]
+      )
+      use_cell_size <- "number_of_cells" %in% names(plot_data) &&
+        any(is.finite(suppressWarnings(as.numeric(plot_data$number_of_cells))))
+      if (use_cell_size) {
+        plot_data$point_size <- log10(
+          pmax(as.numeric(plot_data$number_of_cells), 1)
+        )
+        point_mapping <- aes(
+          x = primary_expression,
+          y = comparison_expression,
+          color = .data[[color_field]],
+          size = point_size
+        )
+      }
+      
+      plot <- ggplot(plot_data, point_mapping) +
+        geom_point(alpha = 0.68) +
+        coord_fixed(
+          ratio = 1,
+          xlim = correlation_limits,
+          ylim = correlation_limits,
+          expand = FALSE,
+          clip = "on"
+        ) +
+        labs(
+          x = paste0("ln(", loaded_gene(), " CPM + 1)"),
+          y = paste0("ln(", loaded_comparison_gene(), " CPM + 1)"),
+          color = if (color_enabled) color_field else NULL,
+          size = if (use_cell_size) "log10(number of cells)" else NULL
+        ) +
+        theme_minimal(base_size = 11) +
+        theme(
+          aspect.ratio = 1,
+          legend.position = if (color_enabled || use_cell_size) {
+            "bottom"
+          } else {
+            "none"
+          }
+        )
+      
+      if (settings$show_orthogonal_fit) {
+        fit <- orthogonal_fit(
+          plot_data$primary_expression,
+          plot_data$comparison_expression
+        )
+        if (!is.null(fit)) {
+          if (identical(fit$type, "vertical")) {
+            plot <- plot + geom_vline(
+              xintercept = fit$intercept,
+              color = "#111827",
+              linewidth = 0.9,
+              linetype = "solid"
+            )
+          } else {
+            plot <- plot + geom_abline(
+              slope = fit$slope,
+              intercept = fit$intercept,
+              color = "#111827",
+              linewidth = 0.9,
+              linetype = "solid"
+            )
+          }
+        }
+      }
+      
+      if (color_enabled) {
+        plot <- plot + manual_color_scale(plot_data, color_field, "color")
+      } else {
+        plot <- plot + scale_color_manual(
+          values = c("All data" = "#214E68"),
+          guide = "none"
+        )
+      }
+      if (use_cell_size) {
+        plot <- plot + scale_size_continuous(range = c(1.5, 7))
+      } else {
+        plot <- plot + guides(size = "none")
+      }
+      plot
+      
+    } else if (settings$plot_type == "trajectory") {
       facet_enabled <- !identical(settings$facet_variable, "none")
       color_enabled <- !identical(settings$color_variable, "none")
       
@@ -2217,7 +2638,19 @@ server <- function(input, output, session) {
       ""
     }
     
-    if (settings$plot_type == "trajectory") {
+    if (settings$plot_type == "correlation") {
+      analysis <- correlation_analysis()
+      paste0(
+        loaded_gene(),
+        " and ",
+        loaded_comparison_gene(),
+        ": Pearson R = ",
+        formatC(analysis$estimate, digits = 3, format = "f"),
+        ", p-value = ",
+        format.pval(analysis$p_value, digits = 3, eps = 1e-300),
+        zero_note
+      )
+    } else if (settings$plot_type == "trajectory") {
       facet_note <- if (identical(settings$facet_variable, "none")) {
         ""
       } else {
