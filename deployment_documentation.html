@@ -91,6 +91,7 @@
       <li class="sidebar-h2"><a href="#section-7">7. Publish documentation</a></li>
       <li class="sidebar-h3"><a href="#pages">GitHub Pages</a></li>
       <li class="sidebar-h2"><a href="#maintenance">Maintenance checklist</a></li>
+      <li class="sidebar-h3"><a href="#future-updates">Commit and deploy future updates</a></li>
       <li class="sidebar-h2"><a href="#troubleshooting">Troubleshooting</a></li>
       <li class="sidebar-h2"><a href="#references">References</a></li>
     </ul>
@@ -143,6 +144,7 @@
 │   ├── run
 │   └── shiny/
 │       ├── app.R
+│       ├── table_column_definitions.csv
 │       ├── renv.lock
 │       ├── .Rprofile
 │       ├── .rscignore
@@ -227,6 +229,7 @@ scales
 shinycssloaders
 cachem
 DT
+jsonlite
 renv
 rsconnect
 curl</code></pre>
@@ -479,7 +482,11 @@ aws s3 ls "${S3}/" --recursive --summarize --region us-west-2 | tail -2</code></
     <h3 id="app-files">Application files</h3>
     <div class="file-card">
       <h4><code>code/shiny/app.R</code></h4>
-      <p>The complete R Shiny application. It loads lightweight metadata and statistics at startup, lazily retrieves one gene directory from public S3, calculates CPM, caches retrieved genes, and supports trajectory, heatmap, dot, and violin plots.</p>
+      <p>The complete R Shiny application. It loads lightweight metadata and statistics at startup, lazily retrieves selected gene directories from public S3, calculates CPM, caches retrieved genes, supports stacked categorical and numeric filters, and provides trajectory, heatmap, dot, violin, and two-gene correlation plots. Plot views include exploratory Spearman, Moran's I, Kruskal-Wallis, or Pearson statistics as appropriate.</p>
+    </div>
+    <div class="file-card">
+      <h4><code>code/shiny/table_column_definitions.csv</code></h4>
+      <p>Provides local statistics-table header definitions using the required columns <code>column_names</code> and <code>column_definitions</code>. Keep this file beside <code>app.R</code> and include it in every deployment bundle.</p>
     </div>
     <div class="file-card">
       <h4><code>code/shiny/www/</code></h4>
@@ -554,6 +561,7 @@ packages_to_record &lt;- c(
   "shinycssloaders",
   "cachem",
   "DT",
+  "jsonlite",
   "rsconnect"
 )
 
@@ -580,7 +588,10 @@ shiny::runApp(".")</code></pre>
       <li>Selecting a statistics row updates the gene selector.</li>
       <li>At least two genes can be retrieved.</li>
       <li>CPM equals <code>summed_counts × CPM_scaling_factor</code>.</li>
-      <li>Trajectory, heatmap, dot, and violin plots render.</li>
+      <li>Trajectory, heatmap, dot, violin, and two-gene correlation plots render.</li>
+      <li>Stacked categorical and numeric filters work together, and categorical statistics-table filters update displayed rows.</li>
+      <li>Manual expression limits, heatmap observation counts, and shared two-gene axis limits work as expected.</li>
+      <li>Trajectory Spearman, matrix Moran's I, violin Kruskal-Wallis, and two-gene Pearson statistics render for eligible plots.</li>
       <li>Age order, taxonomy order, colors, facets, and legends follow <code>value_sets.csv</code>.</li>
       <li>Browser resizing does not generate invalid plot dimensions or scrollbars.</li>
       <li>Both logos and all external links work.</li>
@@ -622,6 +633,7 @@ Sys.setenv(
 
 app_files &lt;- c(
   "app.R",
+  "table_column_definitions.csv",
   "renv.lock",
   list.files(
     "www",
@@ -739,6 +751,7 @@ jobs:
 
           app_files &lt;- c(
             "app.R",
+            "table_column_definitions.csv",
             "renv.lock",
             list.files(
               "www",
@@ -773,6 +786,7 @@ jobs:
         shell: bash
         run: |
           test -f code/shiny/app.R
+          test -f code/shiny/table_column_definitions.csv
           test -f code/shiny/renv.lock
           test -f code/shiny/manifest.json
           test -f code/shiny/www/allen_institute_logo.svg
@@ -832,6 +846,28 @@ jobs:
       <li>Review the Connect build log after deployment.</li>
     </ol>
 
+    <h3 id="future-updates">Commit and deploy future application updates</h3>
+    <p>After editing and testing the application locally, review the changed files, commit them, and push the branch. Changes under <code>code/shiny/</code> trigger the Posit Connect deployment workflow after they reach <code>main</code>; root documentation updates are published through the configured GitHub Pages source.</p>
+    <pre><code>git status
+git diff
+
+git add code/shiny/app.R \
+  code/shiny/table_column_definitions.csv \
+  code/shiny/renv.lock \
+  index.html \
+  deployment_documentation.html
+
+git commit -m "Update mouse gene expression viewer"
+git push origin &lt;branch-name&gt;</code></pre>
+    <p>If only some files changed, include only those files in <code>git add</code>. Do not commit <code>manifest.json</code>, local <code>renv</code> libraries, generated scientific data, credentials, or ignored runtime artifacts.</p>
+    <p>After pushing, merge the tested branch to <code>main</code> using the repository's normal review process. Confirm the GitHub Actions deployment succeeds and validate the live app. For a direct update from <code>main</code>:</p>
+    <pre><code>git checkout main
+git pull --ff-only origin main
+git status
+git add &lt;changed-files&gt;
+git commit -m "Describe the application update"
+git push origin main</code></pre>
+    <div class="warning"><strong>Before pushing:</strong> Run the local regression checklist, verify that <code>table_column_definitions.csv</code> accompanies <code>app.R</code>, and update <code>renv.lock</code> only when the tested package environment changed.</div>
     <h3>When source data or preprocessing changes</h3>
     <ol>
       <li>Regenerate the pseudobulk H5AD if the aggregation definition changed.</li>

@@ -891,8 +891,12 @@ ui <- page_sidebar(
         color: white; font-weight: 600;
       }
       .plot-wrapper {
-        width: 100%; height: calc(100vh - 245px); min-height: 380px;
+        width: 100%; height: calc(95vh - 233px); min-height: 360px;
         padding: 6px; overflow: hidden; box-sizing: border-box;
+      }
+      .matrix-statistics-note {
+        min-height: 30px; padding: 4px 12px 8px; color: #374151;
+        font-size: 0.82rem; line-height: 1.25; text-align: center;
       }
       .plot-wrapper .shiny-plot-output,
       .plot-wrapper .shiny-spinner-output-container,
@@ -1018,7 +1022,7 @@ ui <- page_sidebar(
           ),
           selectInput(
             "color_variable",
-            "Color by (maximum 15 values)",
+            "Color by (maximum 30 values)",
             choices = c(
               "All data" = "none",
               region_field
@@ -1076,7 +1080,7 @@ ui <- page_sidebar(
           ),
           selectInput(
             "correlation_color_variable",
-            "Color by (maximum 15 values)",
+            "Color by (maximum 30 values)",
             choices = c(
               "All data" = "none",
               region_field
@@ -1208,7 +1212,8 @@ ui <- page_sidebar(
             color = "#4B9B58",
             size = 1
           )
-        )
+        ),
+        div(class = "matrix-statistics-note", textOutput("plot_statistics_note"))
       )
     )
   )
@@ -1705,7 +1710,7 @@ server <- function(input, output, session) {
             max = maximum,
             value = selected_range,
             step = step_size,
-            separator = ""
+            sep = ""
           )
         )
       } else {
@@ -1801,7 +1806,7 @@ server <- function(input, output, session) {
     color_choices <- fields_within_limit(
       data,
       plot_fields,
-      15
+      30
     )
     
     facet_choices <- c(
@@ -2063,6 +2068,69 @@ server <- function(input, output, session) {
       )
   })
   
+  has_defensible_order <- function(data, field) {
+    if (!field %in% names(data)) return(FALSE)
+    values <- data[[field]]
+    is.numeric(values) || identical(field, age_field) ||
+      !is.null(value_set_for(field, values))
+  }
+  
+  matrix_graph_cache <- cachem::cache_mem(max_size = 64 * 1024^2, max_age = Inf)
+  matrix_graph_cache_key <- function(x_field, y_field, xo, yo, xi, yi) {
+    source <- paste(x_field, y_field, as.integer(xo), as.integer(yo),
+                    paste(xi, yi, sep = ":", collapse = "|"), sep = "::")
+    bytes <- as.integer(charToRaw(enc2utf8(source))); mod <- 2147483629
+    h1 <- 0; h2 <- 0
+    for (byte in bytes) { h1 <- (h1 * 131 + byte + 1) %% mod; h2 <- (h2 * 137 + byte + 1) %% mod }
+    paste0("matrix_", format(h1, scientific=FALSE, trim=TRUE), "_",
+           format(h2, scientific=FALSE, trim=TRUE), "_", length(xi))
+  }
+  build_sparse_rook_graph <- function(xi, yi, xo, yo) {
+    n <- length(xi); lookup <- seq_len(n); names(lookup) <- paste(xi, yi, sep=":")
+    from <- integer(); to <- integer()
+    for (i in seq_len(n)) {
+      keys <- character()
+      if (xo) keys <- c(keys, paste(xi[i]-1L,yi[i],sep=":"), paste(xi[i]+1L,yi[i],sep=":"))
+      if (yo) keys <- c(keys, paste(xi[i],yi[i]-1L,sep=":"), paste(xi[i],yi[i]+1L,sep=":"))
+      nbr <- unname(lookup[keys]); nbr <- nbr[!is.na(nbr)]
+      if (length(nbr)) { from <- c(from, rep.int(i,length(nbr))); to <- c(to,nbr) }
+    }
+    if (!length(from)) return(NULL)
+    connected <- tabulate(from, nbins=n) > 0
+    if (sum(connected) < 3) return(NULL)
+    map <- integer(n); map[connected] <- seq_len(sum(connected)); keep <- connected[from] & connected[to]
+    from <- map[from[keep]]; to <- map[to[keep]]; totals <- tabulate(from, nbins=sum(connected))
+    w <- 1/totals[from]
+    list(connected=connected, from=from, to=to, edge_weights=w, weight_total=sum(w))
+  }
+  moran_rook_permutation <- function(data, x_field, y_field, value_field="expression",
+                                     permutations=999L, seed=19050L) {
+    m <- data |> transmute(x=as.character(.data[[x_field]]), y=as.character(.data[[y_field]]),
+                           value=as.numeric(.data[[value_field]])) |>
+      filter(!is.na(x),nzchar(x),!is.na(y),nzchar(y),is.finite(value))
+    if (nrow(m)<3 || !is.finite(var(m$value)) || var(m$value)==0)
+      return(list(available=FALSE,reason="Matrix autocorrelation requires at least three occupied cells with variable expression."))
+    xo <- has_defensible_order(data,x_field); yo <- has_defensible_order(data,y_field)
+    if (!xo && !yo) return(list(available=FALSE,reason="Matrix autocorrelation was not calculated because neither axis has a defined numeric or value-set order."))
+    m$xi <- match(m$x,field_levels(data,x_field)); m$yi <- match(m$y,field_levels(data,y_field))
+    key <- matrix_graph_cache_key(x_field,y_field,xo,yo,m$xi,m$yi)
+    graph <- matrix_graph_cache$get(key,missing=NULL)
+    if (is.null(graph)) { graph <- build_sparse_rook_graph(m$xi,m$yi,xo,yo); if(!is.null(graph)) matrix_graph_cache$set(key,graph) }
+    if (is.null(graph)) return(list(available=FALSE,reason="Matrix autocorrelation was not calculated because occupied cells do not form a sufficient rook-neighbor graph."))
+    z <- m$value[graph$connected]; z <- z-mean(z); den <- sum(z^2); n <- length(z); norm <- n/graph$weight_total
+    calc <- function(v) norm*sum(graph$edge_weights*v[graph$from]*v[graph$to])/den
+    obs <- calc(z); set.seed(seed)
+    perms <- vapply(seq_len(permutations),function(i) calc(sample(z,n,FALSE)),numeric(1))
+    list(available=TRUE,statistic=obs,p_value=(1+sum(perms>=obs))/(permutations+1),
+         occupied_cells=n,permutations=permutations)
+  }
+  
+  trajectory_progression_values <- function(data, field) {
+    if (is.numeric(data[[field]])) return(as.numeric(data[[field]]))
+    if (!has_defensible_order(data, field)) return(rep(NA_real_, nrow(data)))
+    match(as.character(data[[field]]), field_levels(data, field))
+  }
+  
   summarized_data <- reactive({
     settings <- plot_settings()
     data <- filtered_data()
@@ -2093,6 +2161,189 @@ server <- function(input, output, session) {
     
     validate(need(nrow(out) > 0, "No valid groups remain for this plot."))
     out
+  })
+  
+  matrix_autocorrelation <- reactive({
+    settings <- plot_settings(); req(settings$plot_type %in% c("heatmap","dot"))
+    moran_rook_permutation(summarized_data(),settings$x_variable,settings$second_dimension,
+                           permutations=999L,seed=19050L)
+  })
+  
+  trajectory_statistics <- reactive({
+    settings <- plot_settings(); req(identical(settings$plot_type,"trajectory"))
+    data <- filtered_data(); field <- settings$progression_variable
+    if (!has_defensible_order(data,field)) return(list(available=FALSE,reason="Trajectory statistics were not calculated because the selected progression axis has no defined numeric or value-set order."))
+    data$.progression_stat <- trajectory_progression_values(data,field)
+    facet_enabled <- !identical(settings$facet_variable,"none")
+    data$.facet_stat <- if (facet_enabled) as.character(data[[settings$facet_variable]]) else "All data"
+    groups <- split(data,data$.facet_stat,drop=TRUE)
+    rows <- lapply(names(groups),function(name){ d<-groups[[name]]; d<-d[is.finite(d$.progression_stat)&is.finite(d$plotted_expression),,drop=FALSE]
+    if(nrow(d)<5 || n_distinct(d$.progression_stat)<3 || n_distinct(d$plotted_expression)<2) return(NULL)
+    test<-suppressWarnings(cor.test(d$.progression_stat,d$plotted_expression,method="spearman",exact=FALSE))
+    data.frame(facet=name,rho=unname(test$estimate),p=test$p.value,n=nrow(d),stringsAsFactors=FALSE) })
+    result <- bind_rows(rows)
+    if(!nrow(result)) return(list(available=FALSE,reason="No trajectory facet had at least 5 observations, 3 progression levels, and variable expression."))
+    result$adjusted_p <- if(nrow(result)>1) p.adjust(result$p,method="BH") else result$p
+    result <- result[order(result$adjusted_p,-abs(result$rho),result$facet),,drop=FALSE]
+    list(available=TRUE,results=result,faceted=facet_enabled)
+  })
+  
+  violin_statistics <- reactive({
+    settings <- plot_settings()
+    req(identical(settings$plot_type, "violin"))
+    data <- filtered_data()
+    group_field <- settings$x_variable
+    facet_field <- settings$second_dimension
+    req(group_field, facet_field)
+    
+    data <- data |>
+      filter(
+        !is.na(.data[[group_field]]),
+        !is.na(.data[[facet_field]]),
+        is.finite(plotted_expression)
+      )
+    groups <- split(
+      data,
+      as.character(data[[facet_field]]),
+      drop = TRUE
+    )
+    rows <- lapply(names(groups), function(facet_name) {
+      facet_data <- groups[[facet_name]]
+      group_values <- as.character(facet_data[[group_field]])
+      group_counts <- table(group_values)
+      eligible_groups <- names(group_counts[group_counts >= 2])
+      facet_data <- facet_data[group_values %in% eligible_groups, , drop = FALSE]
+      if (
+        nrow(facet_data) < 4 ||
+        dplyr::n_distinct(facet_data[[group_field]]) < 2 ||
+        dplyr::n_distinct(facet_data$plotted_expression) < 2
+      ) {
+        return(NULL)
+      }
+      test <- tryCatch(
+        stats::kruskal.test(
+          facet_data$plotted_expression,
+          as.factor(facet_data[[group_field]])
+        ),
+        error = function(e) NULL
+      )
+      if (is.null(test) || !is.finite(test$p.value)) return(NULL)
+      data.frame(
+        facet = facet_name,
+        statistic = unname(test$statistic),
+        degrees_freedom = unname(test$parameter),
+        p = test$p.value,
+        n = nrow(facet_data),
+        groups = dplyr::n_distinct(facet_data[[group_field]]),
+        stringsAsFactors = FALSE
+      )
+    })
+    result <- dplyr::bind_rows(rows)
+    if (!nrow(result)) {
+      return(list(
+        available = FALSE,
+        reason = paste(
+          "No violin facet had at least two groups with two observations",
+          "per group and variable expression."
+        )
+      ))
+    }
+    result$adjusted_p <- stats::p.adjust(result$p, method = "BH")
+    result <- result[
+      order(result$adjusted_p, -result$statistic, result$facet),
+      ,
+      drop = FALSE
+    ]
+    list(
+      available = TRUE,
+      results = result,
+      group_field = group_field,
+      facet_field = facet_field
+    )
+  })
+  
+  output$plot_statistics_note <- renderText({
+    settings <- plot_settings()
+    if(settings$plot_type %in% c("heatmap","dot")) {
+      r<-matrix_autocorrelation(); if(!isTRUE(r$available)) return(r$reason)
+      return(paste0("Evidence of expression autocorrelation across the current matrix arrangement: Moran's I = ",
+                    formatC(r$statistic,digits=3,format="f"),", one-sided permutation p = ",
+                    format.pval(r$p_value,digits=3,eps=1e-3)," (",r$occupied_cells," occupied cells; ",r$permutations," permutations)."))
+    }
+    if (identical(settings$plot_type, "violin")) {
+      r <- violin_statistics()
+      if (!isTRUE(r$available)) return(r$reason)
+      tab <- r$results
+      fmt <- function(row) paste0(
+        row$facet,
+        " (Kruskal-Wallis chi-squared = ",
+        formatC(row$statistic, digits = 2, format = "f"),
+        ", df = ",
+        formatC(row$degrees_freedom, digits = 0, format = "f"),
+        ", BH-adjusted p = ",
+        format.pval(row$adjusted_p, digits = 3, eps = 1e-300),
+        ")"
+      )
+      significant <- tab[tab$adjusted_p < 0.05, , drop = FALSE]
+      if (!nrow(significant)) {
+        return(paste0(
+          "No ", r$facet_field,
+          " facet showed a significant difference across ",
+          r$group_field,
+          " groups (BH-adjusted p < 0.05; ",
+          nrow(tab), " eligible facets tested)."
+        ))
+      }
+      first <- fmt(significant[1, , drop = FALSE])
+      others <- significant[-1, , drop = FALSE]
+      shown <- head(others, 4)
+      text <- paste0(
+        "Strongest group difference among ",
+        r$group_field,
+        " values: ",
+        first,
+        "."
+      )
+      if (nrow(shown)) {
+        text <- paste0(
+          text,
+          " Other significant ",
+          r$facet_field,
+          " facets: ",
+          paste(
+            vapply(
+              seq_len(nrow(shown)),
+              function(i) fmt(shown[i, , drop = FALSE]),
+              character(1)
+            ),
+            collapse = "; "
+          ),
+          "."
+        )
+      }
+      remaining <- nrow(others) - nrow(shown)
+      if (remaining > 0) {
+        text <- paste0(
+          text,
+          " ", remaining,
+          " additional significant facets."
+        )
+      }
+      return(text)
+    }
+    if(!identical(settings$plot_type,"trajectory")) return("")
+    r<-trajectory_statistics(); if(!isTRUE(r$available)) return(r$reason); tab<-r$results
+    fmt <- function(row) paste0(row$facet," (Spearman rho = ",formatC(row$rho,digits=2,format="f"),
+                                ", ",if(r$faceted) "BH-adjusted " else "","p = ",format.pval(row$adjusted_p,digits=3,eps=1e-300),")")
+    sig<-tab[tab$adjusted_p<0.05,,drop=FALSE]
+    if(!nrow(sig)) return(paste0("No ",if(r$faceted) "facet showed" else "overall data showed",
+                                 " a significant monotonic trajectory (",if(r$faceted) "BH-adjusted " else "","p < 0.05; ",nrow(tab)," eligible ",if(r$faceted) "facets" else "test"," tested)."))
+    if(!r$faceted) return(paste0("Overall monotonic trajectory: ",fmt(sig[1,,drop=FALSE]),"."))
+    first<-fmt(sig[1,,drop=FALSE]); others<-sig[-1,,drop=FALSE]; shown<-head(others,4)
+    text<-paste0("Strongest monotonic trajectory: ",first,".")
+    if(nrow(shown)) text<-paste0(text," Other significant facets: ",paste(vapply(seq_len(nrow(shown)),function(i) fmt(shown[i,,drop=FALSE]),character(1)),collapse="; "),".")
+    remaining<-nrow(others)-nrow(shown); if(remaining>0) text<-paste0(text," ",remaining," additional significant facets.")
+    text
   })
   
   orthogonal_fit <- function(x, y) {
