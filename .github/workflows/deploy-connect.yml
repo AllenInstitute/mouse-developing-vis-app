@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           test -f code/shiny/app.R
-          test -f code/shiny/"table_column_definitions.csv",
+          test -f code/shiny/table_column_definitions.csv
           test -f code/shiny/renv.lock
           test -f code/shiny/manifest.json
           test -f code/shiny/www/allen_institute_logo.svg
