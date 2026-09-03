@@ -731,23 +731,24 @@ app_header <- div(
   )
 )
 
-ui <- page_sidebar(
-  title = app_header,
-  theme = bs_theme(
-    version = 5,
-    primary = "#214E68",
-    success = "#4B9B58"
-  ),
-  
-  tags$head(
-    tags$title(app_title),
-    tags$link(
-      rel = "icon",
-      type = "image/png",
-      href = "allen_institute_logo.svg"
+ui <- function(request) {
+  page_sidebar(
+    title = app_header,
+    theme = bs_theme(
+      version = 5,
+      primary = "#214E68",
+      success = "#4B9B58"
     ),
-    tags$style(HTML(
-      "
+    
+    tags$head(
+      tags$title(app_title),
+      tags$link(
+        rel = "icon",
+        type = "image/png",
+        href = "allen_institute_logo.svg"
+      ),
+      tags$style(HTML(
+        "
       html, body { width: 100%; overflow-x: hidden; }
       .navbar, header.navbar {
         background: #111827 !important;
@@ -935,369 +936,377 @@ ui <- page_sidebar(
         }
       }
       "
-    ))
-  ),
-  
-  sidebar = sidebar(
-    width = 320,
-    div(
-      class = "sidebar-logo-container",
-      tags$a(
-        href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
-        target = "_blank",
-        tags$img(
-          src = "Developing_Mouse_Visual_Cortex_logo.png",
-          alt = app_title,
-          class = "sidebar-logo"
-        )
-      )
+      ))
     ),
-    helpText(
-      "Choose a gene, retrieve its data, select plot options, and generate the plot."
-    ),
-    div(
-      class = "gene-controls",
-      selectizeInput(
-        "gene",
-        "Gene symbol",
-        choices = NULL,
-        selected = NULL,
-        options = list(
-          placeholder = paste0(
-            "Type a gene symbol (e.g., ",
-            default_gene,
-            ")"
-          ),
-          maxOptions = 50,
-          create = FALSE
-        )
-      ),
-      actionButton(
-        "get_gene_data",
-        "Get gene data",
-        class = "btn-outline-primary",
-        width = "100%"
-      ),
-      div(class = "gene-status", textOutput("gene_status"))
-    ),
-    conditionalPanel(
-      condition = "output.gene_loaded",
+    
+    sidebar = sidebar(
+      width = 320,
       div(
-        class = "compact-controls",
-        hr(),
-        h4("Filter and scale"),
+        class = "sidebar-logo-container",
+        tags$a(
+          href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+          target = "_blank",
+          tags$img(
+            src = "Developing_Mouse_Visual_Cortex_logo.png",
+            alt = app_title,
+            class = "sidebar-logo"
+          )
+        )
+      ),
+      helpText(
+        "Choose a gene, retrieve its data, select plot options, and generate the plot."
+      ),
+      div(
+        class = "gene-controls",
         selectizeInput(
-          "filter_fields",
-          "Filter metadata",
-          choices = filter_fields,
-          selected = character(),
-          multiple = TRUE,
+          "gene",
+          "Gene symbol",
+          choices = NULL,
+          selected = NULL,
           options = list(
-            placeholder = "Add one or more filters",
-            maxOptions = 1000,
-            closeAfterSelect = TRUE,
-            plugins = list("remove_button")
+            placeholder = paste0(
+              "Type a gene symbol (e.g., ",
+              default_gene,
+              ")"
+            ),
+            maxOptions = 50,
+            create = FALSE
           )
         ),
+        actionButton(
+          "get_gene_data",
+          "Get gene data",
+          class = "btn-outline-primary",
+          width = "100%"
+        ),
+        div(class = "gene-status", textOutput("gene_status"))
+      ),
+      conditionalPanel(
+        condition = "output.gene_loaded",
         div(
-          class = "stacked-filter-panel",
-          uiOutput("stacked_filter_controls")
-        ),
-        checkboxInput(
-          "omit_zero_values",
-          "Discard observations with zero counts",
-          FALSE
-        ),
-        hr(),
-        h4("Plot"),
-        selectInput(
-          "plot_type",
-          "Plot type",
-          choices = c(
-            "Trajectory across development" = "trajectory",
-            "Heatmap of mean expression" = "heatmap",
-            "Dot plot of mean expression" = "dot",
-            "Violin plot with observations" = "violin",
-            "Two-gene correlation" = "correlation"
-          ),
-          selected = "trajectory"
-        ),
-        conditionalPanel(
-          condition = "input.plot_type == 'trajectory'",
-          selectInput(
-            "progression_variable",
-            "Developmental progression axis",
-            choices = age_field,
-            selected = age_field
-          ),
-          selectInput(
-            "facet_variable",
-            "Facet by (maximum 30 values)",
-            choices = c(
-              "Show all data together" = "none",
-              cell_type_fields,
-              region_field
-            ),
-            selected = default_facet
-          ),
-          selectInput(
-            "color_variable",
-            "Color by (maximum 30 values)",
-            choices = c(
-              "All data" = "none",
-              region_field
-            ),
-            selected = default_color
-          ),
-          selectInput(
-            "smoother",
-            "Trend line",
-            choices = c(
-              "LOESS smoother" = "loess",
-              "Linear fit" = "lm",
-              "None" = "none"
-            ),
-            selected = "loess"
-          ),
-        ),
-        conditionalPanel(
-          condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
-          selectInput(
-            "x_variable",
-            "Horizontal axis",
-            choices = plot_fields,
-            selected = default_x
-          ),
-          selectInput(
-            "second_dimension",
-            "Second dimension",
-            choices = setdiff(plot_fields, default_x),
-            selected = default_second
-          )
-        ),
-        conditionalPanel(
-          condition = "input.plot_type == 'correlation'",
+          class = "compact-controls",
+          hr(),
+          h4("Filter and scale"),
           selectizeInput(
-            "comparison_gene",
-            "Comparison gene symbol",
-            choices = NULL,
-            selected = NULL,
+            "filter_fields",
+            "Filter metadata",
+            choices = filter_fields,
+            selected = character(),
+            multiple = TRUE,
             options = list(
-              placeholder = "Type a comparison gene symbol",
-              maxOptions = 50,
-              create = FALSE
+              placeholder = "Add one or more filters",
+              maxOptions = 1000,
+              closeAfterSelect = TRUE,
+              plugins = list("remove_button")
             )
-          ),
-          actionButton(
-            "get_comparison_gene_data",
-            "Gene 2nd gene data",
-            class = "btn-outline-primary",
-            width = "100%"
           ),
           div(
-            class = "gene-status",
-            textOutput("comparison_gene_status")
+            class = "stacked-filter-panel",
+            uiOutput("stacked_filter_controls")
           ),
+          checkboxInput(
+            "omit_zero_values",
+            "Discard observations with zero counts",
+            FALSE
+          ),
+          hr(),
+          h4("Plot"),
           selectInput(
-            "correlation_color_variable",
-            "Color by (maximum 30 values)",
+            "plot_type",
+            "Plot type",
             choices = c(
-              "All data" = "none",
-              region_field
+              "Trajectory across development" = "trajectory",
+              "Heatmap of mean expression" = "heatmap",
+              "Dot plot of mean expression" = "dot",
+              "Violin plot with observations" = "violin",
+              "Two-gene correlation" = "correlation"
             ),
-            selected = default_color
-          ),
-          checkboxInput(
-            "correlation_automatic_limits",
-            "Use automatic axis limits",
-            TRUE
-          ),
-          conditionalPanel(
-            condition = "!input.correlation_automatic_limits",
-            div(
-              class = "expression-scale-row",
-              numericInput(
-                "correlation_axis_minimum",
-                "Minimum",
-                value = 0,
-                min = 0
-              ),
-              numericInput(
-                "correlation_axis_maximum",
-                "Maximum",
-                value = 1,
-                min = 0
-              )
-            )
-          ),
-          checkboxInput(
-            "show_orthogonal_fit",
-            "Show orthogonal fit line",
-            TRUE
-          )
-        ),
-        conditionalPanel(
-          condition = "input.plot_type != 'correlation'",
-          checkboxInput(
-            "log_scale",
-            "Plot ln(CPM + 1)",
-            TRUE
-          ),
-          checkboxInput(
-            "automatic_expression_limits",
-            "Use automatic expression limits",
-            TRUE
-          ),
-          conditionalPanel(
-            condition = "!input.automatic_expression_limits",
-            div(
-              class = "expression-scale-row",
-              numericInput(
-                "expression_minimum",
-                "Minimum",
-                value = 0,
-                min = 0
-              ),
-              numericInput(
-                "expression_maximum",
-                "Maximum",
-                value = 1,
-                min = 0
-              )
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type == 'heatmap'",
-            checkboxInput(
-              "show_heatmap_counts",
-              "Show number of observations",
-              TRUE
-            )
+            selected = "trajectory"
           ),
           conditionalPanel(
             condition = "input.plot_type == 'trajectory'",
+            selectInput(
+              "progression_variable",
+              "Developmental progression axis",
+              choices = age_field,
+              selected = age_field
+            ),
+            selectInput(
+              "facet_variable",
+              "Facet by (maximum 30 values)",
+              choices = c(
+                "Show all data together" = "none",
+                cell_type_fields,
+                region_field
+              ),
+              selected = default_facet
+            ),
+            selectInput(
+              "color_variable",
+              "Color by (maximum 30 values)",
+              choices = c(
+                "All data" = "none",
+                region_field
+              ),
+              selected = default_color
+            ),
+            selectInput(
+              "smoother",
+              "Trend line",
+              choices = c(
+                "LOESS smoother" = "loess",
+                "Linear fit" = "lm",
+                "None" = "none"
+              ),
+              selected = "loess"
+            ),
+          ),
+          conditionalPanel(
+            condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
+            selectInput(
+              "x_variable",
+              "Horizontal axis",
+              choices = plot_fields,
+              selected = default_x
+            ),
+            selectInput(
+              "second_dimension",
+              "Second dimension",
+              choices = setdiff(plot_fields, default_x),
+              selected = default_second
+            )
+          ),
+          conditionalPanel(
+            condition = "input.plot_type == 'correlation'",
+            selectizeInput(
+              "comparison_gene",
+              "Comparison gene symbol",
+              choices = NULL,
+              selected = NULL,
+              options = list(
+                placeholder = "Type a comparison gene symbol",
+                maxOptions = 50,
+                create = FALSE
+              )
+            ),
+            actionButton(
+              "get_comparison_gene_data",
+              "Gene 2nd gene data",
+              class = "btn-outline-primary",
+              width = "100%"
+            ),
+            div(
+              class = "gene-status",
+              textOutput("comparison_gene_status")
+            ),
+            selectInput(
+              "correlation_color_variable",
+              "Color by (maximum 30 values)",
+              choices = c(
+                "All data" = "none",
+                region_field
+              ),
+              selected = default_color
+            ),
             checkboxInput(
-              "show_points",
-              "Show individual observations",
+              "correlation_automatic_limits",
+              "Use automatic axis limits",
+              TRUE
+            ),
+            conditionalPanel(
+              condition = "!input.correlation_automatic_limits",
+              div(
+                class = "expression-scale-row",
+                numericInput(
+                  "correlation_axis_minimum",
+                  "Minimum",
+                  value = 0,
+                  min = 0
+                ),
+                numericInput(
+                  "correlation_axis_maximum",
+                  "Maximum",
+                  value = 1,
+                  min = 0
+                )
+              )
+            ),
+            checkboxInput(
+              "show_orthogonal_fit",
+              "Show orthogonal fit line",
               TRUE
             )
-          )
-        ),
-        actionButton(
-          "make_plot",
-          "Generate plot",
-          class = "btn-primary",
-          width = "100%"
-        ),
-        div(
-          class = "repeat-plot-note",
-          "If nothing happens, press ^ again."
-        ),
-        actionButton(
-          "reset_defaults",
-          "Reset plot options",
-          class = "btn-outline-light btn-sm mt-1",
-          width = "100%"
-        )
-      )
-    )
-  ),
-  
-  navset_card_tab(
-    id = "main_tabs",
-    nav_panel(
-      "Select gene of interest",
-      div(
-        class = "gene-table-panel",
-        DT::DTOutput("gene_statistics_table"),
-        tags$hr(),
-        p(
-          class = "statistics-value-filter-instructions",
-          paste(
-            "Use this section to filter the table by specific category",
-            "values rather than using a text-matching search."
-          )
-        ),
-        div(
-          class = "statistics-value-filter-panel",
-          selectizeInput(
-            "statistics_filter_gene_symbol",
-            "gene_symbol",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            options = list(
-              placeholder = "Select exact gene symbols",
-              maxOptions = 100,
-              closeAfterSelect = FALSE,
-              plugins = list("remove_button")
+          ),
+          conditionalPanel(
+            condition = "input.plot_type != 'correlation'",
+            checkboxInput(
+              "log_scale",
+              "Plot ln(CPM + 1)",
+              TRUE
+            ),
+            checkboxInput(
+              "automatic_expression_limits",
+              "Use automatic expression limits",
+              TRUE
+            ),
+            conditionalPanel(
+              condition = "!input.automatic_expression_limits",
+              div(
+                class = "expression-scale-row",
+                numericInput(
+                  "expression_minimum",
+                  "Minimum",
+                  value = 0,
+                  min = 0
+                ),
+                numericInput(
+                  "expression_maximum",
+                  "Maximum",
+                  value = 1,
+                  min = 0
+                )
+              )
+            ),
+            conditionalPanel(
+              condition = "input.plot_type == 'heatmap'",
+              checkboxInput(
+                "show_heatmap_counts",
+                "Show number of observations",
+                TRUE
+              )
+            ),
+            conditionalPanel(
+              condition = "input.plot_type == 'trajectory'",
+              checkboxInput(
+                "show_points",
+                "Show individual observations",
+                TRUE
+              )
             )
           ),
-          selectizeInput(
-            "statistics_filter_max_ROI",
-            "max_ROI",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            options = list(
-              placeholder = "Select max_ROI values",
-              closeAfterSelect = FALSE,
-              plugins = list("remove_button")
-            )
+          actionButton(
+            "make_plot",
+            "Generate plot",
+            class = "btn-primary",
+            width = "100%"
           ),
-          selectizeInput(
-            "statistics_filter_max_subclass",
-            "max_subclass",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            options = list(
-              placeholder = "Select max_subclass values",
-              closeAfterSelect = FALSE,
-              plugins = list("remove_button")
-            )
+          actionButton(
+            "share_view",
+            "Share this view",
+            icon = icon("share-nodes"),
+            class = "btn-outline-light btn-sm mt-1",
+            width = "100%"
           ),
-          selectizeInput(
-            "statistics_filter_gene_type",
-            "gene_type",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            options = list(
-              placeholder = "Select gene_type values",
-              closeAfterSelect = FALSE,
-              plugins = list("remove_button")
-            )
+          div(
+            class = "repeat-plot-note",
+            "If nothing happens, press ^ again."
+          ),
+          actionButton(
+            "reset_defaults",
+            "Reset plot options",
+            class = "btn-outline-light btn-sm mt-1",
+            width = "100%"
           )
         )
       )
     ),
-    nav_panel(
-      "Plot gene of interest",
-      div(
-        class = "expression-panel",
+    
+    navset_card_tab(
+      id = "main_tabs",
+      nav_panel(
+        "Select gene of interest",
         div(
-          class = "expression-title",
-          textOutput("plot_title")
-        ),
-        div(
-          class = "plot-wrapper",
-          shinycssloaders::withSpinner(
-            plotOutput(
-              "expression_plot",
-              width = "100%",
-              height = "100%"
+          class = "gene-table-panel",
+          DT::DTOutput("gene_statistics_table"),
+          tags$hr(),
+          p(
+            class = "statistics-value-filter-instructions",
+            paste(
+              "Use this section to filter the table by specific category",
+              "values rather than using a text-matching search."
+            )
+          ),
+          div(
+            class = "statistics-value-filter-panel",
+            selectizeInput(
+              "statistics_filter_gene_symbol",
+              "gene_symbol",
+              choices = NULL,
+              selected = NULL,
+              multiple = TRUE,
+              options = list(
+                placeholder = "Select exact gene symbols",
+                maxOptions = 100,
+                closeAfterSelect = FALSE,
+                plugins = list("remove_button")
+              )
             ),
-            type = 8,
-            color = "#4B9B58",
-            size = 1
+            selectizeInput(
+              "statistics_filter_max_ROI",
+              "max_ROI",
+              choices = NULL,
+              selected = NULL,
+              multiple = TRUE,
+              options = list(
+                placeholder = "Select max_ROI values",
+                closeAfterSelect = FALSE,
+                plugins = list("remove_button")
+              )
+            ),
+            selectizeInput(
+              "statistics_filter_max_subclass",
+              "max_subclass",
+              choices = NULL,
+              selected = NULL,
+              multiple = TRUE,
+              options = list(
+                placeholder = "Select max_subclass values",
+                closeAfterSelect = FALSE,
+                plugins = list("remove_button")
+              )
+            ),
+            selectizeInput(
+              "statistics_filter_gene_type",
+              "gene_type",
+              choices = NULL,
+              selected = NULL,
+              multiple = TRUE,
+              options = list(
+                placeholder = "Select gene_type values",
+                closeAfterSelect = FALSE,
+                plugins = list("remove_button")
+              )
+            )
           )
-        ),
-        div(class = "matrix-statistics-note", textOutput("plot_statistics_note"))
+        )
+      ),
+      nav_panel(
+        "Plot gene of interest",
+        div(
+          class = "expression-panel",
+          div(
+            class = "expression-title",
+            textOutput("plot_title")
+          ),
+          div(
+            class = "plot-wrapper",
+            shinycssloaders::withSpinner(
+              plotOutput(
+                "expression_plot",
+                width = "100%",
+                height = "100%"
+              ),
+              type = 8,
+              color = "#4B9B58",
+              size = 1
+            )
+          ),
+          div(class = "matrix-statistics-note", textOutput("plot_statistics_note"))
+        )
       )
     )
   )
-)
+}
 
 # ============================================================
 # Server
@@ -1314,6 +1323,158 @@ server <- function(input, output, session) {
     "No comparison gene retrieved yet."
   )
   previous_dimension_plot_type <- reactiveVal(NULL)
+  bookmark_plot_trigger <- reactiveVal(0L)
+  pending_bookmark_state <- reactiveVal(NULL)
+  restored_filter_values <- reactiveVal(NULL)
+  restore_plot_pending <- reactiveVal(FALSE)
+  bookmark_schema_version <- 1L
+  
+  bookmark_excluded_inputs <- unique(c(
+    "gene",
+    "comparison_gene",
+    "filter_fields",
+    "omit_zero_values",
+    "plot_type",
+    "progression_variable",
+    "facet_variable",
+    "color_variable",
+    "smoother",
+    "x_variable",
+    "second_dimension",
+    "correlation_color_variable",
+    "correlation_automatic_limits",
+    "correlation_axis_minimum",
+    "correlation_axis_maximum",
+    "show_orthogonal_fit",
+    "log_scale",
+    "automatic_expression_limits",
+    "expression_minimum",
+    "expression_maximum",
+    "show_heatmap_counts",
+    "show_points",
+    "statistics_filter_gene_symbol",
+    "statistics_filter_max_ROI",
+    "statistics_filter_max_subclass",
+    "statistics_filter_gene_type",
+    "get_gene_data",
+    "get_comparison_gene_data",
+    "make_plot",
+    "reset_defaults",
+    "share_view",
+    "bookmarked_url",
+    "gene_statistics_table_rows_selected",
+    "gene_statistics_table_search",
+    "gene_statistics_table_rows_current",
+    "gene_statistics_table_cell_clicked",
+    vapply(filter_fields, filter_input_id, character(1))
+  ))
+  setBookmarkExclude(bookmark_excluded_inputs)
+  
+  observe({
+    setBookmarkExclude(names(input))
+  }, priority = 1000)
+  
+  onBookmark(function(state) {
+    selected_filter_fields <- isolate(input$filter_fields)
+    if (is.null(selected_filter_fields)) {
+      selected_filter_fields <- character()
+    }
+    selected_filter_fields <- selected_filter_fields[
+      selected_filter_fields %in% filter_fields
+    ]
+    
+    stacked_filter_values <- setNames(
+      lapply(selected_filter_fields, function(field) {
+        isolate(input[[filter_input_id(field)]])
+      }),
+      selected_filter_fields
+    )
+    
+    state$values$viewer_state <- list(
+      schema_version = bookmark_schema_version,
+      gene = isolate(loaded_gene()),
+      comparison_gene = isolate(loaded_comparison_gene()),
+      filter_fields = selected_filter_fields,
+      stacked_filter_values = stacked_filter_values,
+      omit_zero_values = isolate(input$omit_zero_values),
+      plot_type = isolate(input$plot_type),
+      progression_variable = isolate(input$progression_variable),
+      facet_variable = isolate(input$facet_variable),
+      color_variable = isolate(input$color_variable),
+      smoother = isolate(input$smoother),
+      x_variable = isolate(input$x_variable),
+      second_dimension = isolate(input$second_dimension),
+      correlation_color_variable = isolate(
+        input$correlation_color_variable
+      ),
+      correlation_automatic_limits = isolate(
+        input$correlation_automatic_limits
+      ),
+      correlation_axis_minimum = isolate(
+        input$correlation_axis_minimum
+      ),
+      correlation_axis_maximum = isolate(
+        input$correlation_axis_maximum
+      ),
+      show_orthogonal_fit = isolate(input$show_orthogonal_fit),
+      log_scale = isolate(input$log_scale),
+      automatic_expression_limits = isolate(
+        input$automatic_expression_limits
+      ),
+      expression_minimum = isolate(input$expression_minimum),
+      expression_maximum = isolate(input$expression_maximum),
+      show_heatmap_counts = isolate(input$show_heatmap_counts),
+      show_points = isolate(input$show_points)
+    )
+  })
+  
+  onRestore(function(state) {
+    saved <- state$values$viewer_state
+    pending_bookmark_state(saved)
+    if (!is.null(saved)) {
+      saved_fields <- as.character(saved$filter_fields)
+      saved_fields <- saved_fields[saved_fields %in% filter_fields]
+      restored_filter_values(list(
+        fields = saved_fields,
+        values = saved$stacked_filter_values
+      ))
+      restore_plot_pending(TRUE)
+    }
+  })
+  
+  onBookmarked(function(url) {
+    showModal(modalDialog(
+      title = "Share this view",
+      p(
+        "Copy this URL to share the current gene, filters, and plot settings."
+      ),
+      textInput(
+        "bookmarked_url",
+        NULL,
+        value = url,
+        width = "100%"
+      ),
+      tags$a(
+        href = url,
+        target = "_blank",
+        rel = "noopener noreferrer",
+        "Open bookmarked view"
+      ),
+      easyClose = TRUE,
+      footer = modalButton("Close")
+    ))
+  })
+  
+  observeEvent(input$share_view, {
+    if (is.null(loaded_gene())) {
+      showNotification(
+        "Retrieve a gene before sharing this view.",
+        type = "warning"
+      )
+      return()
+    }
+    session$doBookmark()
+  }, ignoreInit = TRUE)
   
   output$gene_loaded <- reactive({
     !is.null(gene_data()) &&
@@ -1803,7 +1964,20 @@ server <- function(input, output, session) {
     
     tagList(lapply(selected_fields, function(field) {
       input_id <- filter_input_id(field)
-      current_value <- isolate(input[[input_id]])
+      restored_filters <- isolate(restored_filter_values())
+      restored_value <- if (
+        !is.null(restored_filters) &&
+        field %in% restored_filters$fields
+      ) {
+        restored_filters$values[[field]]
+      } else {
+        NULL
+      }
+      current_value <- if (!is.null(restored_value)) {
+        restored_value
+      } else {
+        isolate(input[[input_id]])
+      }
       
       if (field %in% numeric_filter_fields) {
         numeric_values <- suppressWarnings(
@@ -1886,8 +2060,21 @@ server <- function(input, output, session) {
       selected_fields %in% filter_fields
     ]
     
+    restored_filters <- restored_filter_values()
     filters <- lapply(selected_fields, function(field) {
-      value <- input[[filter_input_id(field)]]
+      restored_value <- if (
+        !is.null(restored_filters) &&
+        field %in% restored_filters$fields
+      ) {
+        restored_filters$values[[field]]
+      } else {
+        NULL
+      }
+      value <- if (!is.null(restored_value)) {
+        restored_value
+      } else {
+        input[[filter_input_id(field)]]
+      }
       
       if (field %in% numeric_filter_fields) {
         if (
@@ -1918,6 +2105,50 @@ server <- function(input, output, session) {
     
     Filter(Negate(is.null), filters)
   })
+  
+  observe({
+    req(isTRUE(restore_plot_pending()))
+    saved <- pending_bookmark_state()
+    req(!is.null(saved), !is.null(loaded_gene()))
+    
+    restored_filters <- restored_filter_values()
+    filters_ready <- TRUE
+    if (!is.null(restored_filters) && length(restored_filters$fields) > 0) {
+      filters_ready <- all(vapply(
+        restored_filters$fields,
+        function(field) {
+          expected <- restored_filters$values[[field]]
+          actual <- input[[filter_input_id(field)]]
+          if (is.null(actual)) return(FALSE)
+          if (field %in% numeric_filter_fields) {
+            isTRUE(all.equal(
+              as.numeric(actual),
+              as.numeric(expected),
+              tolerance = 1e-8,
+              check.attributes = FALSE
+            ))
+          } else {
+            identical(
+              sort(as.character(actual)),
+              sort(as.character(expected))
+            )
+          }
+        },
+        logical(1)
+      ))
+    }
+    req(filters_ready)
+    
+    restored_filter_values(NULL)
+    restore_plot_pending(FALSE)
+    bookmark_plot_trigger(isolate(bookmark_plot_trigger()) + 1L)
+    bslib::nav_select(
+      id = "main_tabs",
+      selected = "Plot gene of interest",
+      session = session
+    )
+    pending_bookmark_state(NULL)
+  }, priority = -100)
   
   control_metadata <- reactive({
     filtered <- apply_filter_specification(
@@ -2085,6 +2316,227 @@ server <- function(input, output, session) {
     ignoreInit = FALSE
   )
   
+  
+  onRestored(function(state) {
+    saved <- pending_bookmark_state()
+    if (is.null(saved)) {
+      return()
+    }
+    
+    if (
+      is.null(saved$schema_version) ||
+      !identical(as.integer(saved$schema_version), bookmark_schema_version)
+    ) {
+      showNotification(
+        paste(
+          "This shared view was created with an older application version.",
+          "Available settings will be restored where possible."
+        ),
+        type = "warning",
+        duration = 8
+      )
+    }
+    
+    updateCheckboxInput(
+      session, "omit_zero_values", value = isTRUE(saved$omit_zero_values)
+    )
+    updateSelectInput(
+      session, "plot_type", selected = as.character(saved$plot_type)[1]
+    )
+    updateSelectInput(
+      session,
+      "progression_variable",
+      selected = as.character(saved$progression_variable)[1]
+    )
+    updateSelectInput(
+      session, "facet_variable", selected = as.character(saved$facet_variable)[1]
+    )
+    updateSelectInput(
+      session, "color_variable", selected = as.character(saved$color_variable)[1]
+    )
+    updateSelectInput(
+      session, "smoother", selected = as.character(saved$smoother)[1]
+    )
+    updateSelectInput(
+      session, "x_variable", selected = as.character(saved$x_variable)[1]
+    )
+    updateSelectInput(
+      session,
+      "second_dimension",
+      selected = as.character(saved$second_dimension)[1]
+    )
+    updateSelectInput(
+      session,
+      "correlation_color_variable",
+      selected = as.character(saved$correlation_color_variable)[1]
+    )
+    updateCheckboxInput(
+      session,
+      "correlation_automatic_limits",
+      value = isTRUE(saved$correlation_automatic_limits)
+    )
+    updateNumericInput(
+      session,
+      "correlation_axis_minimum",
+      value = as.numeric(saved$correlation_axis_minimum)[1]
+    )
+    updateNumericInput(
+      session,
+      "correlation_axis_maximum",
+      value = as.numeric(saved$correlation_axis_maximum)[1]
+    )
+    updateCheckboxInput(
+      session, "show_orthogonal_fit", value = isTRUE(saved$show_orthogonal_fit)
+    )
+    updateCheckboxInput(
+      session, "log_scale", value = isTRUE(saved$log_scale)
+    )
+    updateCheckboxInput(
+      session,
+      "automatic_expression_limits",
+      value = isTRUE(saved$automatic_expression_limits)
+    )
+    updateNumericInput(
+      session,
+      "expression_minimum",
+      value = as.numeric(saved$expression_minimum)[1]
+    )
+    updateNumericInput(
+      session,
+      "expression_maximum",
+      value = as.numeric(saved$expression_maximum)[1]
+    )
+    updateCheckboxInput(
+      session, "show_heatmap_counts", value = isTRUE(saved$show_heatmap_counts)
+    )
+    updateCheckboxInput(
+      session, "show_points", value = isTRUE(saved$show_points)
+    )
+    
+    saved_filter_fields <- as.character(saved$filter_fields)
+    saved_filter_fields <- saved_filter_fields[
+      saved_filter_fields %in% filter_fields
+    ]
+    
+    updateSelectizeInput(
+      session,
+      "filter_fields",
+      choices = filter_fields,
+      selected = saved_filter_fields,
+      server = TRUE
+    )
+    
+    session$onFlushed(function() {
+      if (length(saved_filter_fields) > 0) {
+        for (field in saved_filter_fields) {
+          saved_value <- saved$stacked_filter_values[[field]]
+          if (is.null(saved_value)) {
+            next
+          }
+          input_id <- filter_input_id(field)
+          if (field %in% numeric_filter_fields) {
+            updateSliderInput(
+              session,
+              input_id,
+              value = as.numeric(saved_value)
+            )
+          } else {
+            updateSelectizeInput(
+              session,
+              input_id,
+              choices = field_levels(metadata, field),
+              selected = as.character(saved_value),
+              server = TRUE
+            )
+          }
+        }
+      }
+      
+      session$onFlushed(function() {
+        primary_gene <- as.character(saved$gene)[1]
+        if (
+          is.na(primary_gene) ||
+          !nzchar(primary_gene) ||
+          !primary_gene %in% available_genes
+        ) {
+          showNotification(
+            "The primary gene in this shared view is no longer available.",
+            type = "error",
+            duration = NULL
+          )
+          pending_bookmark_state(NULL)
+          restored_filter_values(NULL)
+          restore_plot_pending(FALSE)
+          return()
+        }
+        
+        tryCatch(
+          {
+            primary_data <- read_gene(primary_gene)
+            gene_data(primary_data)
+            loaded_gene(primary_gene)
+            requested_gene(primary_gene)
+            updateSelectizeInput(
+              session,
+              "gene",
+              choices = available_genes,
+              selected = primary_gene,
+              server = TRUE
+            )
+            gene_status_message(paste0(
+              "Loaded ", primary_gene, " (",
+              comma(nrow(primary_data)), " observations)."
+            ))
+            
+            restored_plot_type <- as.character(saved$plot_type)[1]
+            if (identical(restored_plot_type, "correlation")) {
+              comparison_gene <- as.character(saved$comparison_gene)[1]
+              if (
+                is.na(comparison_gene) ||
+                !nzchar(comparison_gene) ||
+                !comparison_gene %in% available_genes ||
+                identical(comparison_gene, primary_gene)
+              ) {
+                stop(
+                  "The comparison gene in this shared view is unavailable or invalid."
+                )
+              }
+              comparison_data <- read_gene(comparison_gene)
+              comparison_gene_data(comparison_data)
+              loaded_comparison_gene(comparison_gene)
+              updateSelectizeInput(
+                session,
+                "comparison_gene",
+                choices = available_genes,
+                selected = comparison_gene,
+                server = TRUE
+              )
+              comparison_gene_status_message(paste0(
+                "Loaded ", comparison_gene, " (",
+                comma(nrow(comparison_data)), " observations)."
+              ))
+            }
+            
+            restore_plot_pending(TRUE)
+          },
+          error = function(e) {
+            showNotification(
+              paste(
+                "Unable to restore this shared view:",
+                conditionMessage(e)
+              ),
+              type = "error",
+              duration = NULL
+            )
+            pending_bookmark_state(NULL)
+            restored_filter_values(NULL)
+            restore_plot_pending(FALSE)
+          }
+        )
+      }, once = TRUE)
+    }, once = TRUE)
+  })
+  
   observeEvent(input$reset_defaults, {
     updateSelectizeInput(
       session,
@@ -2129,23 +2581,26 @@ server <- function(input, output, session) {
     updateSelectInput(session, "second_dimension", selected = default_second)
   })
   
-  observeEvent(input$make_plot, {
-    bslib::nav_select(
-      id = "main_tabs",
-      selected = "Plot gene of interest",
-      session = session
-    )
-  }, ignoreInit = TRUE)
+
+  plot_settings <- reactiveVal(NULL)
   
-  plot_settings <- eventReactive(input$make_plot, {
+  capture_plot_settings <- function() {
     req(gene_data(), loaded_gene(), input$plot_type)
+    
     if (identical(input$plot_type, "correlation")) {
       req(comparison_gene_data(), loaded_comparison_gene())
-      validate(need(
-        !identical(loaded_gene(), loaded_comparison_gene()),
-        "Choose two different genes for the correlation plot."
-      ))
+      
+      validate(
+        need(
+          !identical(
+            loaded_gene(),
+            loaded_comparison_gene()
+          ),
+          "Choose two different genes for the correlation plot."
+        )
+      )
     }
+    
     list(
       plot_type = input$plot_type,
       filters = active_filter_specification(),
@@ -2156,24 +2611,54 @@ server <- function(input, output, session) {
       ),
       expression_minimum = input$expression_minimum,
       expression_maximum = input$expression_maximum,
-      show_heatmap_counts = isTRUE(input$show_heatmap_counts),
+      show_heatmap_counts = isTRUE(
+        input$show_heatmap_counts
+      ),
       progression_variable = input$progression_variable,
       facet_variable = input$facet_variable,
       color_variable = input$color_variable,
-      correlation_color_variable = input$correlation_color_variable,
+      correlation_color_variable =
+        input$correlation_color_variable,
       correlation_automatic_limits = isTRUE(
         input$correlation_automatic_limits
       ),
-      correlation_axis_minimum = input$correlation_axis_minimum,
-      correlation_axis_maximum = input$correlation_axis_maximum,
-      show_orthogonal_fit = isTRUE(input$show_orthogonal_fit),
+      correlation_axis_minimum =
+        input$correlation_axis_minimum,
+      correlation_axis_maximum =
+        input$correlation_axis_maximum,
+      show_orthogonal_fit = isTRUE(
+        input$show_orthogonal_fit
+      ),
       comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
       x_variable = input$x_variable,
       second_dimension = input$second_dimension
     )
-  }, ignoreInit = TRUE)
+  }
+  
+  observeEvent(
+    list(
+      input$make_plot,
+      bookmark_plot_trigger()
+    ),
+    {
+      plot_settings(capture_plot_settings())
+      
+      session$onFlushed(
+        function() {
+          bslib::nav_select(
+            id = "main_tabs",
+            selected = "Plot gene of interest",
+            session = session
+          )
+        },
+        once = TRUE
+      )
+    },
+    ignoreInit = TRUE,
+    priority = 100
+  )
   
   filtered_data <- reactive({
     settings <- plot_settings()
@@ -3069,4 +3554,8 @@ server <- function(input, output, session) {
   })
 }
 
-shinyApp(ui = ui, server = server)
+shinyApp(
+  ui = ui,
+  server = server,
+  enableBookmarking = "url"
+)
