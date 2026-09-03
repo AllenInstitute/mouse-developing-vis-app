@@ -874,6 +874,26 @@ ui <- page_sidebar(
       }
       .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .gene-table-panel { padding: 8px; overflow-x: auto; }
+      .statistics-value-filter-instructions {
+        font-size: 1rem; line-height: 1.5; margin: 0 0 1rem;
+        color: inherit;
+      }
+      .statistics-value-filter-panel {
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px; width: 100%; box-sizing: border-box;
+      }
+      .statistics-value-filter-panel .shiny-input-container {
+        width: 100% !important; margin-bottom: 0 !important;
+      }
+      .statistics-value-filter-panel label {
+        color: #003057; font-size: .78rem; font-weight: 600;
+        margin-bottom: 2px;
+      }
+      @media (max-width: 1100px) {
+        .statistics-value-filter-panel {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
       .gene-table-panel table.dataTable { font-size: .82rem; }
       .gene-table-panel table.dataTable thead th.has-definition {
         cursor: help;
@@ -1189,7 +1209,67 @@ ui <- page_sidebar(
       "Select gene of interest",
       div(
         class = "gene-table-panel",
-        DT::DTOutput("gene_statistics_table")
+        DT::DTOutput("gene_statistics_table"),
+        tags$hr(),
+        p(
+          class = "statistics-value-filter-instructions",
+          paste(
+            "Use this section to filter the table by specific category",
+            "values rather than using a text-matching search."
+          )
+        ),
+        div(
+          class = "statistics-value-filter-panel",
+          selectizeInput(
+            "statistics_filter_gene_symbol",
+            "gene_symbol",
+            choices = NULL,
+            selected = NULL,
+            multiple = TRUE,
+            options = list(
+              placeholder = "Select exact gene symbols",
+              maxOptions = 100,
+              closeAfterSelect = FALSE,
+              plugins = list("remove_button")
+            )
+          ),
+          selectizeInput(
+            "statistics_filter_max_ROI",
+            "max_ROI",
+            choices = NULL,
+            selected = NULL,
+            multiple = TRUE,
+            options = list(
+              placeholder = "Select max_ROI values",
+              closeAfterSelect = FALSE,
+              plugins = list("remove_button")
+            )
+          ),
+          selectizeInput(
+            "statistics_filter_max_subclass",
+            "max_subclass",
+            choices = NULL,
+            selected = NULL,
+            multiple = TRUE,
+            options = list(
+              placeholder = "Select max_subclass values",
+              closeAfterSelect = FALSE,
+              plugins = list("remove_button")
+            )
+          ),
+          selectizeInput(
+            "statistics_filter_gene_type",
+            "gene_type",
+            choices = NULL,
+            selected = NULL,
+            multiple = TRUE,
+            options = list(
+              placeholder = "Select gene_type values",
+              closeAfterSelect = FALSE,
+              plugins = list("remove_button")
+            )
+          )
+        )
       )
     ),
     nav_panel(
@@ -1245,8 +1325,63 @@ server <- function(input, output, session) {
     suspendWhenHidden = FALSE
   )
   
+  statistics_value_filter_columns <- c(
+    gene_symbol = statistics_gene_column,
+    max_ROI = "max_ROI",
+    max_subclass = "max_subclass",
+    gene_type = "gene_type"
+  )
+  statistics_value_filter_columns <- statistics_value_filter_columns[
+    statistics_value_filter_columns %in% names(gene_statistics)
+  ]
+  
+  statistics_filter_choices <- function(column_name) {
+    values <- unique(as.character(gene_statistics[[column_name]]))
+    values <- values[!is.na(values) & nzchar(values)]
+    sort(values, na.last = TRUE)
+  }
+  
+  session$onFlushed(function() {
+    for (display_name in names(statistics_value_filter_columns)) {
+      column_name <- unname(
+        statistics_value_filter_columns[[display_name]]
+      )
+      updateSelectizeInput(
+        session,
+        paste0("statistics_filter_", display_name),
+        choices = statistics_filter_choices(column_name),
+        selected = character(),
+        server = TRUE
+      )
+    }
+  }, once = TRUE)
+  
+  filtered_gene_statistics <- reactive({
+    filtered_table <- gene_statistics
+    
+    for (display_name in names(statistics_value_filter_columns)) {
+      column_name <- unname(
+        statistics_value_filter_columns[[display_name]]
+      )
+      selected_values <- input[[
+        paste0("statistics_filter_", display_name)
+      ]]
+      
+      if (!is.null(selected_values) && length(selected_values) > 0) {
+        filtered_table <- filtered_table[
+          as.character(filtered_table[[column_name]]) %in%
+            as.character(selected_values),
+          ,
+          drop = FALSE
+        ]
+      }
+    }
+    
+    filtered_table
+  })
+  
   output$gene_statistics_table <- DT::renderDT({
-    table_data <- gene_statistics
+    table_data <- filtered_gene_statistics()
     
     numeric_columns <- names(table_data)[vapply(
       table_data,
@@ -1348,7 +1483,8 @@ server <- function(input, output, session) {
     selected_row <- input$gene_statistics_table_rows_selected
     req(length(selected_row) == 1)
     
-    selected_gene <- gene_statistics[[statistics_gene_column]][selected_row]
+    current_statistics <- filtered_gene_statistics()
+    selected_gene <- current_statistics[[statistics_gene_column]][selected_row]
     req(length(selected_gene) == 1, !is.na(selected_gene), nzchar(selected_gene))
     
     if (selected_gene %in% available_genes) {

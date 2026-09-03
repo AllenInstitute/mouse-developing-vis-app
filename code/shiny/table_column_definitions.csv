@@ -9,3 +9,5 @@ log2fc_ROI(>0),ROI log2 fold change calculated from mean CPM values after exclud
 max_subclass,Cell subclass with the highest mean CPM for the gene.
 log2fc_subclass,Log2 fold change comparing the maximum subclass mean CPM with the arithmetic mean of the subclass-level mean CPM values.
 log2fc_subclass(>0),Subclass log2 fold change calculated from mean CPM values after excluding zero-expression observations within each subclass.
+gene_type,Indication of what type of gene this is (from BioMart).
+ 

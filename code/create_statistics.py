@@ -7,6 +7,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 from scipy import sparse
+from pybiomart import Dataset
 
 
 INPUT_H5AD = Path(
@@ -53,6 +54,78 @@ def infer_gene_symbols(adata):
             )
 
     return adata.var_names.astype(str).to_numpy()
+
+
+def fetch_gene_types(gene_symbols):
+    dataset = Dataset(
+        name="mmusculus_gene_ensembl",
+        host="http://www.ensembl.org",
+    )
+
+    biomart = dataset.query(
+        attributes=[
+            "external_gene_name",
+            "gene_biotype",
+        ]
+    )
+
+    if biomart.shape[1] != 2:
+        raise RuntimeError(
+            "BioMart did not return the expected gene-symbol and "
+            "gene-biotype columns."
+        )
+
+    biomart = biomart.iloc[:, :2].copy()
+    biomart.columns = [
+        "gene_symbol",
+        "gene_type",
+    ]
+
+    biomart["gene_symbol"] = (
+        biomart["gene_symbol"]
+        .astype("string")
+        .str.strip()
+    )
+    biomart["gene_type"] = (
+        biomart["gene_type"]
+        .astype("string")
+        .str.strip()
+    )
+
+    biomart = biomart.dropna(
+        subset=["gene_symbol", "gene_type"]
+    )
+    biomart = biomart[
+        (biomart["gene_symbol"] != "") &
+        (biomart["gene_type"] != "")
+    ]
+    biomart = biomart.drop_duplicates(
+        subset=["gene_symbol"],
+        keep="first",
+    )
+
+    gene_type_lookup = dict(
+        zip(
+            biomart["gene_symbol"].astype(str),
+            biomart["gene_type"].astype(str),
+        )
+    )
+
+    gene_types = np.asarray(
+        [
+            gene_type_lookup.get(str(symbol), "unknown")
+            for symbol in gene_symbols
+        ],
+        dtype=object,
+    )
+
+    print(
+        "Matched BioMart gene_types for "
+        f"{np.sum(gene_types != 'unknown'):,} of "
+        f"{len(gene_types):,} genes."
+    )
+
+    return gene_types
 
 
 def parse_developmental_age(value):
@@ -322,6 +395,7 @@ if p40_or_older_mask.sum() == 0:
 
 
 gene_symbols = infer_gene_symbols(adata)
+gene_types = fetch_gene_types(gene_symbols)
 
 roi_groups = (
     adata.obs[roi_field]
@@ -551,6 +625,11 @@ for block_start in range(
                 "log2fc_subclass(>0)": (
                     subclass_log2fc_nonzero
                 ),
+                "gene_type": (
+                    gene_types[
+                        block_start:block_stop
+                    ]
+                ),
             }
         )
     )
@@ -580,6 +659,7 @@ expected_columns = [
     "max_subclass",
     "log2fc_subclass",
     "log2fc_subclass(>0)",
+    "gene_type",
 ]
 
 statistics = statistics[
