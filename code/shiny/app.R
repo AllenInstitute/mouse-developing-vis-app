@@ -1206,8 +1206,79 @@ ui <- function(request) {
             "Reset plot options",
             class = "btn-outline-light btn-sm mt-1",
             width = "100%"
+          ),
+        ),
+      ),
+      
+      hr(style = "margin: 1px 0;"),
+      
+      h4(
+        "Contribute",
+        style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
+      ),
+      div(
+        style = paste(
+          "display: flex; gap: 6px; width: 100%;",
+          "align-items: stretch; margin-bottom: 1px;"
+        ),
+        tags$a(
+          href = "mailto:jeremym@alleninstitute.org?body=''&subject='Dev mouse' app comments",
+          icon("envelope", lib = "font-awesome"),
+          tags$span("PROVIDE FEEDBACK"),
+          style = paste(
+            "display: inline-flex; flex: 1 1 0;",
+            "align-items: center; justify-content: center; gap: 4px;",
+            "min-height: 29px; padding: 4px 6px;",
+            "background: #666666; border: 1px solid white;",
+            "border-radius: 0.25rem; color: white !important;",
+            "font-size: 0.68rem; font-weight: 600;",
+            "line-height: 1; text-decoration: none; white-space: nowrap;"
+          )
+        ),
+        tags$a(
+          href = "https://github.com/AllenInstitute/mouse-aging-app/",
+          target = "_blank",
+          rel = "noopener noreferrer",
+          icon("code", lib = "font-awesome"),
+          tags$span("ACCESS CODE"),
+          style = paste(
+            "display: inline-flex; flex: 1 1 0;",
+            "align-items: center; justify-content: center; gap: 4px;",
+            "min-height: 29px; padding: 4px 6px;",
+            "background: #666666; border: 1px solid white;",
+            "border-radius: 0.25rem; color: white !important;",
+            "font-size: 0.68rem; font-weight: 600;",
+            "line-height: 1; text-decoration: none; white-space: nowrap;"
           )
         )
+      ),
+      p(
+        "We encourage contributions via the above links.",
+        style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
+      ),
+      h4(
+        "Acknowledgements",
+        style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
+      ),
+      p(
+        "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT 5.6 Think). All data included in the app are from ",
+        a(
+          "Continuous cell-type diversification in mouse visual cortex development",
+          href = "https://doi.org/10.1038/s41586-025-09644-1",
+          target = "_blank",
+          rel = "noopener noreferrer",
+          style = "color: white; font-weight: bold;"
+        ),
+        " and are freely available on ",
+        a(
+          "ABC Atlas Access",
+          href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+          target = "_blank",
+          rel = "noopener noreferrer",
+          style = "color: white; font-weight: bold;"
+        ),
+        ". Beta testers include: Irika Sinha.",
+        style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
       )
     ),
     
@@ -2581,7 +2652,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "second_dimension", selected = default_second)
   })
   
-
+  
   plot_settings <- reactiveVal(NULL)
   
   capture_plot_settings <- function() {
