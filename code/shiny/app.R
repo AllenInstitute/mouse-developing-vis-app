@@ -742,6 +742,7 @@ ui <- function(request) {
     
     tags$head(
       tags$title(app_title),
+      uiOutput("plot_size_css"),
       tags$link(
         rel = "icon",
         type = "image/png",
@@ -923,7 +924,7 @@ ui <- function(request) {
       .plot-wrapper .shiny-spinner-output-container,
       .plot-wrapper .load-container {
         width: 100% !important; height: 100% !important;
-        min-height: 0 !important; overflow: hidden !important;
+        min-height: 0 !important;
       }
       @media (max-width: 1000px) {
         .mouse-title { font-size: 15px; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
@@ -1033,7 +1034,7 @@ ui <- function(request) {
             ),
             selectInput(
               "facet_variable",
-              "Facet by (maximum 30 values)",
+              "Facet by (maximum 50 values)",
               choices = c(
                 "Show all data together" = "none",
                 cell_type_fields,
@@ -1043,7 +1044,7 @@ ui <- function(request) {
             ),
             selectInput(
               "color_variable",
-              "Color by (maximum 30 values)",
+              "Color by (maximum 50 values)",
               choices = c(
                 "All data" = "none",
                 region_field
@@ -1077,6 +1078,34 @@ ui <- function(request) {
             )
           ),
           conditionalPanel(
+            condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
+            div(
+              class = "filter-row",
+              selectInput(
+                "facets_per_row",
+                "Facets per row",
+                choices = c(
+                  "1" = 1,
+                  "2" = 2,
+                  "3" = 3,
+                  "4" = 4
+                ),
+                selected = 3
+              ),
+              selectInput(
+                "facet_row_height",
+                "Height per facet",
+                choices = c(
+                  "Compact" = 225,
+                  "Standard" = 300,
+                  "Tall" = 450,
+                  "Extra tall" = 600
+                ),
+                selected = 300
+              )
+            )
+          ),
+          conditionalPanel(
             condition = "input.plot_type == 'correlation'",
             selectizeInput(
               "comparison_gene",
@@ -1101,7 +1130,7 @@ ui <- function(request) {
             ),
             selectInput(
               "correlation_color_variable",
-              "Color by (maximum 30 values)",
+              "Color by (maximum 50 values)",
               choices = c(
                 "All data" = "none",
                 region_field
@@ -1196,10 +1225,6 @@ ui <- function(request) {
             icon = icon("share-nodes"),
             class = "btn-outline-light btn-sm mt-1",
             width = "100%"
-          ),
-          div(
-            class = "repeat-plot-note",
-            "If nothing happens, press ^ again."
           ),
           actionButton(
             "reset_defaults",
@@ -1423,6 +1448,8 @@ server <- function(input, output, session) {
     "expression_maximum",
     "show_heatmap_counts",
     "show_points",
+    "facets_per_row",
+    "facet_row_height",
     "statistics_filter_gene_symbol",
     "statistics_filter_max_ROI",
     "statistics_filter_max_subclass",
@@ -1495,7 +1522,9 @@ server <- function(input, output, session) {
       expression_minimum = isolate(input$expression_minimum),
       expression_maximum = isolate(input$expression_maximum),
       show_heatmap_counts = isolate(input$show_heatmap_counts),
-      show_points = isolate(input$show_points)
+      show_points = isolate(input$show_points),
+      facets_per_row = isolate(input$facets_per_row),
+      facet_row_height = isolate(input$facet_row_height)
     )
   })
   
@@ -2239,12 +2268,12 @@ server <- function(input, output, session) {
     facet_choices <- fields_within_limit(
       data,
       unique(c(cell_type_fields, region_field)),
-      30
+      50
     )
     color_choices <- fields_within_limit(
       data,
       plot_fields,
-      30
+      50
     )
     
     facet_choices <- c(
@@ -2313,7 +2342,7 @@ server <- function(input, output, session) {
       dimension_choices <- if (input$plot_type %in% c("heatmap", "dot")) {
         plot_fields
       } else {
-        fields_within_limit(data, plot_fields, 30)
+        fields_within_limit(data, plot_fields, 50)
       }
       if (length(dimension_choices) < 2) dimension_choices <- plot_fields
       
@@ -2483,6 +2512,20 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session, "show_points", value = isTRUE(saved$show_points)
     )
+    if (!is.null(saved$facets_per_row)) {
+      updateSelectInput(
+        session,
+        "facets_per_row",
+        selected = as.character(saved$facets_per_row)[1]
+      )
+    }
+    if (!is.null(saved$facet_row_height)) {
+      updateSelectInput(
+        session,
+        "facet_row_height",
+        selected = as.character(saved$facet_row_height)[1]
+      )
+    }
     
     saved_filter_fields <- as.character(saved$filter_fields)
     saved_filter_fields <- saved_filter_fields[
@@ -2648,6 +2691,8 @@ server <- function(input, output, session) {
     )
     updateSelectInput(session, "smoother", selected = "loess")
     updateCheckboxInput(session, "show_points", value = TRUE)
+    updateSelectInput(session, "facets_per_row", selected = "3")
+    updateSelectInput(session, "facet_row_height", selected = "300")
     updateSelectInput(session, "x_variable", selected = default_x)
     updateSelectInput(session, "second_dimension", selected = default_second)
   })
@@ -2703,6 +2748,8 @@ server <- function(input, output, session) {
       comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
+      facets_per_row = as.integer(input$facets_per_row),
+      facet_row_height = as.integer(input$facet_row_height),
       x_variable = input$x_variable,
       second_dimension = input$second_dimension
     )
@@ -2730,6 +2777,34 @@ server <- function(input, output, session) {
     ignoreInit = TRUE,
     priority = 100
   )
+  
+  output$plot_size_css <- renderUI({
+    settings <- plot_settings()
+    if (is.null(settings)) return(NULL)
+    uses_facet_layout <- identical(settings$plot_type, "violin") ||
+      (identical(settings$plot_type, "trajectory") &&
+         !identical(settings$facet_variable, "none"))
+    if (!uses_facet_layout) {
+      return(tags$style(HTML(
+        ".plot-wrapper { overflow: hidden !important; } #expression_plot { height: 100% !important; }"
+      )))
+    }
+    data <- filtered_data()
+    facet_field <- if (identical(settings$plot_type, "trajectory")) {
+      settings$facet_variable
+    } else {
+      settings$second_dimension
+    }
+    number_of_facets <- dplyr::n_distinct(data[[facet_field]], na.rm = TRUE)
+    facets_per_row <- max(1L, as.integer(settings$facets_per_row))
+    facet_height <- max(150L, as.integer(settings$facet_row_height))
+    number_of_rows <- max(1L, ceiling(number_of_facets / facets_per_row))
+    plot_height <- number_of_rows * facet_height
+    tags$style(HTML(sprintf(
+      ".plot-wrapper { overflow-y: auto !important; overflow-x: hidden !important; } .plot-wrapper .shiny-spinner-output-container, .plot-wrapper .load-container { height: auto !important; min-height: %dpx !important; overflow: visible !important; } #expression_plot { height: %dpx !important; min-height: %dpx !important; }",
+      plot_height, plot_height, plot_height
+    )))
+  })
   
   filtered_data <- reactive({
     settings <- plot_settings()
@@ -3387,6 +3462,9 @@ server <- function(input, output, session) {
         plot <- plot + facet_wrap(
           vars(.data[[settings$facet_variable]]),
           scales = "fixed",
+          ncol = settings$facets_per_row,
+          axes = "all_x",
+          axis.labels = "all_x",
           drop = TRUE
         )
       }
@@ -3554,6 +3632,9 @@ server <- function(input, output, session) {
         facet_wrap(
           vars(.data[[settings$second_dimension]]),
           scales = "fixed",
+          ncol = settings$facets_per_row,
+          axes = "all_x",
+          axis.labels = "all_x",
           drop = TRUE
         ) +
         scale_y_continuous(
@@ -3568,7 +3649,7 @@ server <- function(input, output, session) {
           strip.text = element_text(face = "bold", size = 9)
         )
     }
-  }, res = 96, execOnResize = TRUE)
+  }, res = 96, execOnResize = FALSE)
   
   output$plot_title <- renderText({
     if (is.null(loaded_gene())) {
