@@ -1,4 +1,4 @@
-# hash:sha256:c56b08d0fc74c0407d7b660341859f9fcdf56fbbe9afc141777c777f89517bfd
+# hash:sha256:ee254895566590c9ec27ed3657a407757639bae6c2650c1d4541e25604e765b5
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
@@ -6,7 +6,17 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
 
-ENV LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
+RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys \
+        0xAD2323F17326AE31401037733E05EBFF05441C52 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository -y 'deb http://deb.codeocean.com/shiny-server-jammy/ ubuntu main' \
+    && apt-get purge -y --autoremove software-properties-common \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        pandoc=2.9.2.1-3ubuntu2 \
+        shiny-server=1.5.23.1030 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN conda install -y \
         libcurl==8.18.0 \
@@ -23,6 +33,7 @@ RUN --mount=type=secret,id=git-access-token \
     numpy==2.5.2 \
     pandas==3.0.5 \
     pyarrow==25.0.1 \
+    pybiomart==0.2.0 \
     scipy==1.18.0 \
     -e git+https://github.com/AllenInstitute/abc_atlas_access.git@b16ee223d3466a57b30066973413ccc948c2e983#egg=abc-atlas-access
 
@@ -38,7 +49,7 @@ RUN Rscript -e 'remotes::install_version("shiny", "1.14.0")' \
     && Rscript -e 'remotes::install_version("DT", "0.34.0")' \
     && Rscript -e 'remotes::install_version("renv", "1.2.4")' \
     && Rscript -e 'remotes::install_version("rsconnect", "1.10.1")' \
-    && Rscript -e 'remotes::install_version("curl", "7.1.0")'
+    && Rscript -e 'remotes::install_version("curl", "8.0.0")'
 
 ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 

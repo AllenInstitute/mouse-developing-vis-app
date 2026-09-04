@@ -13,3 +13,12 @@ Rscript -e 'install.packages(
   repos = "https://cloud.r-project.org",
   type = "source"
 )'
+
+RSTUDIO_CONFIG="/etc/rstudio/rserver.conf"
+
+sed -i \
+  '/^rsession-ld-library-path=/d' \
+  "${RSTUDIO_CONFIG}"
+
+printf '\nrsession-ld-library-path=/opt/conda/lib\n' \
+  >> "${RSTUDIO_CONFIG}"

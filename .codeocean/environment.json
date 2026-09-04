@@ -8,6 +8,25 @@
 		"mount_secrets": true
 	},
 	"installers": {
+		"apt": {
+			"packages": [
+				{
+					"name": "pandoc",
+					"version": "2.9.2.1-3ubuntu2"
+				},
+				{
+					"name": "shiny-server",
+					"version": "1.5.23.1030"
+				}
+			],
+			"sources": [
+				"deb http://deb.codeocean.com/shiny-server-jammy/ ubuntu main"
+			],
+			"gpg_keys": [
+				"0xAD2323F17326AE31401037733E05EBFF05441C52"
+			],
+			"install_software_properties_common": true
+		},
 		"conda": {
 			"packages": [
 				{
@@ -53,6 +72,10 @@
 				{
 					"name": "pyarrow",
 					"version": "25.0.1"
+				},
+				{
+					"name": "pybiomart",
+					"version": "0.2.0"
 				},
 				{
 					"name": "scipy",
@@ -106,7 +129,7 @@
 				},
 				{
 					"name": "curl",
-					"version": "7.1.0"
+					"version": "8.0.0"
 				}
 			],
 			"use_rcache": true
@@ -132,11 +155,5 @@
 			],
 			"version": "4.100.3"
 		}
-	},
-	"env_variables": [
-		{
-			"name": "LD_LIBRARY_PATH",
-			"value": "/opt/conda/lib:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu"
-		}
-	]
+	}
 }
