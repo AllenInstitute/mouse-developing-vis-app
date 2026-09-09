@@ -285,6 +285,56 @@ def maximum_group_statistics(labels, means):
 
     return maximum_labels, log2fc
 
+def weighted_fraction(detected_values, cell_totals):
+    cell_totals = np.asarray(cell_totals, dtype=np.float64)
+    denominator = np.sum(cell_totals)
+    if not np.isfinite(denominator) or denominator <= 0:
+        return np.full(detected_values.shape[1], np.nan, dtype=np.float64)
+    return np.sum(detected_values, axis=0, dtype=np.float64) / denominator
+
+def grouped_detection_fractions(detected_values, cell_totals, groups):
+    groups = np.asarray(groups, dtype=object)
+    cell_totals = np.asarray(cell_totals, dtype=np.float64)
+    valid_group = np.asarray(
+        [
+            value is not None
+            and not pd.isna(value)
+            and str(value) != ""
+            for value in groups
+        ],
+        dtype=bool,
+    )
+    labels = pd.unique(groups[valid_group].astype(str)).tolist()
+    fractions = []
+    for label in labels:
+        group_mask = valid_group & (groups.astype(str) == label)
+        fractions.append(
+            weighted_fraction(
+                detected_values[group_mask, :],
+                cell_totals[group_mask],
+            )
+        )
+    if not fractions:
+        return [], np.empty((0, detected_values.shape[1]), dtype=np.float64)
+    return labels, np.vstack(fractions)
+
+def maximum_fraction_statistics(labels, fractions):
+    n_genes = fractions.shape[1]
+    maximum_labels = np.empty(n_genes, dtype=object)
+    maximum_labels[:] = None
+    fraction_difference = np.full(n_genes, np.nan, dtype=np.float64)
+    for gene_index in range(n_genes):
+        gene_fractions = fractions[:, gene_index]
+        valid = np.isfinite(gene_fractions)
+        if not np.any(valid):
+            continue
+        valid_indices = np.flatnonzero(valid)
+        maximum_index = valid_indices[np.argmax(gene_fractions[valid])]
+        maximum_labels[gene_index] = labels[maximum_index]
+        fraction_difference[gene_index] = (
+            gene_fractions[maximum_index] - np.mean(gene_fractions[valid])
+        )
+    return maximum_labels, fraction_difference
 
 if not INPUT_H5AD.exists():
     candidates = list(
@@ -415,6 +465,28 @@ if sparse.issparse(adata.X):
 else:
     expression_matrix = np.asarray(adata.X)
 
+detection_layer = "number_of_cells_expressing"
+if detection_layer not in adata.layers:
+    raise KeyError(
+        f"Input H5AD must contain layers['{detection_layer}']."
+    )
+if "number_of_cells" not in adata.obs.columns:
+    raise KeyError("Input H5AD obs must contain 'number_of_cells'.")
+
+detection_matrix = adata.layers[detection_layer]
+if sparse.issparse(detection_matrix):
+    detection_matrix = detection_matrix.tocsc(copy=False)
+else:
+    detection_matrix = np.asarray(detection_matrix)
+if detection_matrix.shape != adata.shape:
+    raise ValueError("Detection-count layer shape does not match X.")
+
+number_of_cells = pd.to_numeric(
+    adata.obs["number_of_cells"],
+    errors="coerce",
+).to_numpy(dtype=np.float64)
+if np.any(~np.isfinite(number_of_cells)) or np.any(number_of_cells <= 0):
+    raise ValueError("number_of_cells must contain finite positive values.")
 
 library_totals = np.asarray(
     expression_matrix.sum(axis=1)
@@ -464,6 +536,30 @@ for block_start in range(
             dtype=np.float64,
         )
 
+    if sparse.issparse(detection_matrix):
+        detected_counts = (
+            detection_matrix[
+                :,
+                block_start:block_stop,
+            ]
+            .toarray()
+            .astype(np.float64, copy=False)
+        )
+    else:
+        detected_counts = np.asarray(
+            detection_matrix[
+                :,
+                block_start:block_stop,
+            ],
+            dtype=np.float64,
+        )
+    if np.any(detected_counts < 0):
+        raise ValueError("Detection counts contain negative values.")
+    if np.any(detected_counts > number_of_cells[:, np.newaxis]):
+        raise ValueError(
+            "Detection counts exceed number_of_cells for at least one row."
+        )
+
     cpm = (
         raw_counts *
         cpm_scaling_factor[:, np.newaxis]
@@ -496,37 +592,22 @@ for block_start in range(
     )
 
 
-    embryonic_nonzero_mean = positive_mean(
-        cpm[embryonic_mask, :],
+    overall_fraction_expressing = weighted_fraction(
+        detected_counts,
+        number_of_cells,
     )
-
-    p40_or_older_nonzero_mean = positive_mean(
-        cpm[p40_or_older_mask, :],
+    embryonic_fraction_expressing = weighted_fraction(
+        detected_counts[embryonic_mask, :],
+        number_of_cells[embryonic_mask],
     )
-
-    age_log2fc_nonzero = np.full(
-        block_stop - block_start,
-        np.nan,
-        dtype=np.float64,
+    p40_or_older_fraction_expressing = weighted_fraction(
+        detected_counts[p40_or_older_mask, :],
+        number_of_cells[p40_or_older_mask],
     )
-
-    valid_age_nonzero = (
-        np.isfinite(embryonic_nonzero_mean) &
-        np.isfinite(p40_or_older_nonzero_mean)
+    age_fraction_expressing_difference = (
+        p40_or_older_fraction_expressing -
+        embryonic_fraction_expressing
     )
-
-    age_log2fc_nonzero[valid_age_nonzero] = (
-        safe_log2fc(
-            p40_or_older_nonzero_mean[
-                valid_age_nonzero
-            ],
-            embryonic_nonzero_mean[
-                valid_age_nonzero
-            ],
-        )
-    )
-
-
     roi_labels, roi_means = grouped_means(
         cpm,
         roi_groups,
@@ -541,22 +622,17 @@ for block_start in range(
     )
 
 
-    roi_nonzero_labels, roi_nonzero_means = (
-        grouped_means(
-            cpm,
-            roi_groups,
-            nonzero_only=True,
+    roi_fraction_labels, roi_fractions = grouped_detection_fractions(
+        detected_counts,
+        number_of_cells,
+        roi_groups,
+    )
+    max_fraction_roi, fraction_difference_roi = (
+        maximum_fraction_statistics(
+            roi_fraction_labels,
+            roi_fractions,
         )
     )
-
-    _, roi_log2fc_nonzero = (
-        maximum_group_statistics(
-            roi_nonzero_labels,
-            roi_nonzero_means,
-        )
-    )
-
-
     subclass_labels, subclass_means = (
         grouped_means(
             cpm,
@@ -573,23 +649,19 @@ for block_start in range(
     )
 
 
-    (
-        subclass_nonzero_labels,
-        subclass_nonzero_means,
-    ) = grouped_means(
-        cpm,
-        subclass_groups,
-        nonzero_only=True,
-    )
-
-    _, subclass_log2fc_nonzero = (
-        maximum_group_statistics(
-            subclass_nonzero_labels,
-            subclass_nonzero_means,
+    subclass_fraction_labels, subclass_fractions = (
+        grouped_detection_fractions(
+            detected_counts,
+            number_of_cells,
+            subclass_groups,
         )
     )
-
-
+    max_fraction_subclass, fraction_difference_subclass = (
+        maximum_fraction_statistics(
+            subclass_fraction_labels,
+            subclass_fractions,
+        )
+    )
     statistics_blocks.append(
         pd.DataFrame(
             {
@@ -604,8 +676,11 @@ for block_start in range(
                 "age_log2fc": (
                     age_log2fc
                 ),
-                "age_log2fc(>0)": (
-                    age_log2fc_nonzero
+                "overall_fraction_expressing": (
+                    overall_fraction_expressing
+                ),
+                "age_fraction_expressing_difference": (
+                    age_fraction_expressing_difference
                 ),
                 "max_ROI": (
                     max_roi
@@ -613,8 +688,11 @@ for block_start in range(
                 "log2fc_ROI": (
                     roi_log2fc
                 ),
-                "log2fc_ROI(>0)": (
-                    roi_log2fc_nonzero
+                "max_fraction_ROI": (
+                    max_fraction_roi
+                ),
+                "fraction_difference_ROI": (
+                    fraction_difference_roi
                 ),
                 "max_subclass": (
                     max_subclass
@@ -622,8 +700,11 @@ for block_start in range(
                 "log2fc_subclass": (
                     subclass_log2fc
                 ),
-                "log2fc_subclass(>0)": (
-                    subclass_log2fc_nonzero
+                "max_fraction_subclass": (
+                    max_fraction_subclass
+                ),
+                "fraction_difference_subclass": (
+                    fraction_difference_subclass
                 ),
                 "gene_type": (
                     gene_types[
@@ -652,13 +733,16 @@ expected_columns = [
     "gene_symbol",
     "ln(mean_CPM+1)",
     "age_log2fc",
-    "age_log2fc(>0)",
+    "overall_fraction_expressing",
+    "age_fraction_expressing_difference",
     "max_ROI",
     "log2fc_ROI",
-    "log2fc_ROI(>0)",
+    "max_fraction_ROI",
+    "fraction_difference_ROI",
     "max_subclass",
     "log2fc_subclass",
-    "log2fc_subclass(>0)",
+    "max_fraction_subclass",
+    "fraction_difference_subclass",
     "gene_type",
 ]
 
