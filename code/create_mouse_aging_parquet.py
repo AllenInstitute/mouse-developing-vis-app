@@ -7,6 +7,7 @@ A pseudobulk AnnData object with:
   * rows = library_label x cluster_alias pseudobulk observations
   * columns = genes
   * X = summed raw counts
+  * layers["number_of_cells_expressing"] = number of source cells with count > 0
   * obs = library/donor/taxonomy metadata, including library_label
 
 Output
@@ -23,7 +24,7 @@ Output
     mouse_gene_summary_statistics.csv
   manifest.json
 
-Each gene has exactly one Parquet file. All gene files use the same sample order.
+Each gene has exactly one Paarquet file. All gene files use the same sample order.
 CPM_scaling.csv has exactly two columns, as requested: library_label and
 CPM_scaling_factor. Because each H5AD row is a library x cluster pseudobulk,
 library_label may repeat; row order is identical to obs_metadata.parquet and
@@ -263,6 +264,7 @@ def write_gene_file(
     gene_key: str,
     sample_ids: np.ndarray,
     counts: np.ndarray,
+    number_of_cells_expressing: np.ndarray,
     compression: Optional[str],
 ) -> None:
     partition_dir = counts_dir / f"gene={gene_key}"
@@ -271,6 +273,10 @@ def write_gene_file(
         {
             "sample_id": pa.array(sample_ids, type=pa.string()),
             "summed_counts": pa.array(counts),
+            "number_of_cells_expressing": pa.array(
+                number_of_cells_expressing,
+                type=pa.uint32(),
+            ),
         }
     )
     pq.write_table(
@@ -298,6 +304,11 @@ def main() -> None:
         raise ValueError(f"The input H5AD is empty: shape={adata.shape}")
     if "library_label" not in adata.obs.columns:
         raise KeyError("Input H5AD obs must contain 'library_label'.")
+    detection_layer = "number_of_cells_expressing"
+    if detection_layer not in adata.layers:
+        raise KeyError(
+            f"Input H5AD must contain layers['{detection_layer}']."
+        )
 
     # Retain a stable pseudobulk row identifier and exact row order everywhere.
     sample_ids = adata.obs_names.astype(str).to_numpy()
@@ -328,6 +339,17 @@ def main() -> None:
         X = adata.X.tocsc(copy=False)
     else:
         X = np.asarray(adata.X)
+
+    detection_values = adata.layers[detection_layer]
+    if sparse.issparse(detection_values):
+        detection_values = detection_values.tocsc(copy=False)
+    else:
+        detection_values = np.asarray(detection_values)
+
+    if detection_values.shape != adata.shape:
+        raise ValueError(
+            "number_of_cells_expressing layer shape does not match X."
+        )
 
     # Library-size denominator is total raw counts across all genes for each
     # pseudobulk observation (library_label x cluster_alias row).
@@ -433,7 +455,25 @@ def main() -> None:
             raw = X[:, start:stop].toarray()
         else:
             raw = np.asarray(X[:, start:stop])
+        if sparse.issparse(detection_values):
+            detected = detection_values[:, start:stop].toarray()
+        else:
+            detected = np.asarray(detection_values[:, start:stop])
+
+        if np.any(detected < 0):
+            raise ValueError("Detection counts contain negative values.")
+        if "number_of_cells" in obs_metadata.columns:
+            number_of_cells = pd.to_numeric(
+                obs_metadata["number_of_cells"],
+                errors="coerce",
+            ).to_numpy(dtype=np.float64)
+            if np.any(detected > number_of_cells[:, None]):
+                raise ValueError(
+                    "Detection counts exceed number_of_cells for at least one row."
+                )
+
         raw = raw.astype(np.float64, copy=False)
+        detected = detected.astype(np.uint32, copy=False)
         cpm = raw * cpm_scaling[:, None]
 
         # Each gene is written exactly once to one data.parquet file.
@@ -446,6 +486,7 @@ def main() -> None:
                 gene_key=gene_keys[gene_j],
                 sample_ids=sample_ids,
                 counts=gene_counts,
+                number_of_cells_expressing=detected[:, local_j],
                 compression=compression,
             )
 
@@ -543,6 +584,12 @@ def main() -> None:
         "gene_file_format": "counts_by_gene/gene=<gene_key>/data.parquet",
         "sample_order": "Identical across obs_metadata.parquet, CPM_scaling.csv, and every gene file",
         "cpm_definition": "summed_counts * (1,000,000 / total raw counts across all genes in the pseudobulk row)",
+        "gene_file_columns": [
+            "sample_id",
+            "summed_counts",
+            "number_of_cells_expressing",
+        ],
+        "detection_definition": "number of source cells with raw count > 0",
         "age_field": age_field,
         "youngest_age": youngest_label,
         "oldest_age": oldest_label,
@@ -567,6 +614,21 @@ def main() -> None:
         check_cpm["library_label"].astype(str).to_numpy(),
     ):
         raise RuntimeError("CPM_scaling.csv library order does not match metadata.")
+
+    first_gene_file = counts_dir / f"gene={gene_keys[0]}" / "data.parquet"
+    check_gene = pq.read_table(first_gene_file)
+    expected_gene_columns = [
+        "sample_id",
+        "summed_counts",
+        "number_of_cells_expressing",
+    ]
+    if check_gene.column_names != expected_gene_columns:
+        raise RuntimeError(
+            "Gene Parquet columns changed during serialization: "
+            f"{check_gene.column_names}"
+        )
+    if check_gene.num_rows != adata.n_obs:
+        raise RuntimeError("Gene Parquet row count changed during serialization.")
 
     print("\nCompleted successfully.")
     print(f"Output directory: {output_dir}")
