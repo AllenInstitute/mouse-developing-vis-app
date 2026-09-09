@@ -6,9 +6,10 @@ Output
 ./Developing_Mouse_Visual_Cortex_library_cluster_pseudobulk.h5ad
 
 Each observation is one library_label x cluster_alias combination. X contains
-summed raw counts by gene. obs contains library, donor, cell, and taxonomy
-metadata taken from the first cell in each pseudobulk group, plus
-number_of_cells, the number of cells contributing to every value in that row.
+summed raw counts by gene. layers["number_of_cells_expressing"] contains the
+number of source cells with raw count > 0 for each gene. obs contains library,
+donor, cell, and taxonomy metadata taken from the first cell in each pseudobulk
+group, plus number_of_cells, the total number of contributing cells per row.
 
 The script downloads data through AbcProjectCache. The large source H5AD is
 opened in backed mode and aggregated in row chunks rather than loaded into RAM.
@@ -298,13 +299,14 @@ def aggregate_counts(
     group_codes: np.ndarray,
     n_groups: int,
     chunk_size: int,
-) -> sparse.csr_matrix:
-    """Sum source rows into pseudobulk groups without loading all X into RAM."""
+) -> tuple[sparse.csr_matrix, sparse.csr_matrix]:
+    """Aggregate summed counts and expressing-cell counts in row chunks."""
     n_cells, n_genes = source.shape
     if len(group_codes) != n_cells:
         raise ValueError("group_codes length does not match source cell count")
 
-    total = sparse.csr_matrix((n_groups, n_genes), dtype=np.int64)
+    total_counts = sparse.csr_matrix((n_groups, n_genes), dtype=np.int64)
+    total_detected = sparse.csr_matrix((n_groups, n_genes), dtype=np.int64)
 
     for start in range(0, n_cells, chunk_size):
         stop = min(start + chunk_size, n_cells)
@@ -324,6 +326,12 @@ def aggregate_counts(
             )
         block.data = np.rint(block.data).astype(np.int64, copy=False)
 
+        # A second sparse matrix records whether each source cell expresses
+        # each gene. Aggregating this binary matrix gives the number of cells
+        # with raw count > 0 for every pseudobulk-by-gene combination.
+        detected_block = block.copy()
+        detected_block.data = np.ones(detected_block.nnz, dtype=np.int64)
+
         local_codes = group_codes[start:stop]
         assignment = sparse.csr_matrix(
             (
@@ -332,11 +340,19 @@ def aggregate_counts(
             ),
             shape=(n_groups, stop - start),
         )
-        total = total + assignment @ block
+        total_counts = total_counts + assignment @ block
+        total_detected = total_detected + assignment @ detected_block
 
-    total.sum_duplicates()
-    total.eliminate_zeros()
-    return total
+    total_counts.sum_duplicates()
+    total_counts.eliminate_zeros()
+    total_detected.sum_duplicates()
+    total_detected.eliminate_zeros()
+
+    # Detection counts are non-negative integers and are much smaller than
+    # raw count sums, so uint32 reduces storage without sacrificing range.
+    total_detected = total_detected.astype(np.uint32)
+
+    return total_counts, total_detected
 
 
 def sanitize_dataframe_for_h5ad(frame: pd.DataFrame) -> pd.DataFrame:
@@ -388,12 +404,25 @@ def main() -> None:
             "Creating %s pseudobulk rows from %s cells across %s genes",
             len(obs), source.n_obs, source.n_vars,
         )
-        summed_counts = aggregate_counts(
+        summed_counts, detected_counts = aggregate_counts(
             source=source,
             group_codes=group_codes,
             n_groups=len(obs),
             chunk_size=args.chunk_size,
         )
+
+        # Every detected count must be between zero and the total number of
+        # source cells contributing to its pseudobulk row.
+        detected_coo = detected_counts.tocoo()
+        row_cell_totals = obs["number_of_cells"].to_numpy(dtype=np.int64)
+        if np.any(detected_coo.data.astype(np.int64) < 0):
+            raise RuntimeError("Detection counts contain negative values")
+        if np.any(
+            detected_coo.data.astype(np.int64) > row_cell_totals[detected_coo.row]
+        ):
+            raise RuntimeError(
+                "Detection counts exceed number_of_cells for at least one row"
+            )
     finally:
         # Backed AnnData stores an open h5py handle.
         if getattr(source, "file", None) is not None:
@@ -406,11 +435,19 @@ def main() -> None:
         X=summed_counts,
         obs=obs,
         var=var,
+        layers={
+            "number_of_cells_expressing": detected_counts,
+        },
         uns={
             "dataset": DATASET_DIR,
             "taxonomy": TAXONOMY_DIR,
             "manifest": str(cache.current_manifest),
             "aggregation": "sum of raw counts by library_label and cluster_alias",
+            "detection_aggregation": (
+                "number of cells with raw count > 0 by library_label and "
+                "cluster_alias"
+            ),
+            "detection_layer": "number_of_cells_expressing",
             "grouping_columns": ["library_label", "cluster_alias"],
             "count_column": "number_of_cells",
             "source_h5ad": str(raw_h5ad_path),
@@ -429,6 +466,14 @@ def main() -> None:
             )
         if "number_of_cells" not in check.obs.columns:
             raise RuntimeError("Read-back output lacks number_of_cells")
+        if "number_of_cells_expressing" not in check.layers:
+            raise RuntimeError(
+                "Read-back output lacks number_of_cells_expressing layer"
+            )
+        if check.layers["number_of_cells_expressing"].shape != check.shape:
+            raise RuntimeError(
+                "Read-back detection-count layer shape differs from X"
+            )
     finally:
         check.file.close()
 

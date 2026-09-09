@@ -1,9 +1,0 @@
-{
-	"version": 1,
-	"attached_datasets": [
-		{
-			"id": "306180c4-785f-493e-93f5-4c52311c88c6",
-			"mount": "mouse_vis_cortex_pseudobulk"
-		}
-	]
-}
