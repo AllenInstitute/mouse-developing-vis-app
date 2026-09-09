@@ -1,3 +1,4 @@
-git add .gitattributes code/run
-git commit -m "Enforce Linux line endings for Code Ocean scripts"
-git push
+# Enforce LF line endings for Code Ocean scripts
+code/run text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
