@@ -1,0 +1,9 @@
+{
+	"version": 1,
+	"attached_datasets": [
+		{
+			"id": "f4bedefc-448f-4612-bcc9-eeaedb5c77af",
+			"mount": "mouse_vis_cortex_pseudobulk_detection_counts"
+		}
+	]
+}

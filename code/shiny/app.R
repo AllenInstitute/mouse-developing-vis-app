@@ -1281,7 +1281,7 @@ ui <- function(request) {
           )
         ),
         tags$a(
-          href = "https://github.com/AllenInstitute/mouse-aging-app/",
+          href = "https://github.com/AllenInstitute/mouse-developing-vis-app/",
           target = "_blank",
           rel = "noopener noreferrer",
           icon("code", lib = "font-awesome"),

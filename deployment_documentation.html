@@ -107,9 +107,9 @@
     <p class="lead">
       This guide documents the complete, reproducible workflow used to convert the public Developing Mouse Visual Cortex files from ABC Atlas Access into the pseudobulk and gene-level files required by the web application, publish those files to public AWS storage, run the R Shiny application, deploy it to Posit Connect, and configure GitHub to update the deployed application automatically.
     </p>
-    <div class="note"><strong>Scope:</strong> This documentation applies only to the <code>mouse-aging-app</code> repository and Developing Mouse Visual Cortex viewer. It does not document the SEA-AD Multiregion application.</div>
+    <div class="note"><strong>Scope:</strong> This documentation applies only to the <code>mouse-developing-vis-app</code> repository and Developing Mouse Visual Cortex viewer. It does not document the SEA-AD Multiregion application.</div>
     <p>
-      Source repository: <a href="https://github.com/AllenInstitute/mouse-aging-app" target="_blank" rel="noopener noreferrer">AllenInstitute/mouse-aging-app</a><br>
+      Source repository: <a href="https://github.com/AllenInstitute/mouse-developing-vis-app" target="_blank" rel="noopener noreferrer">AllenInstitute/mouse-developing-vis-app</a><br>
       Live application: <a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex Gene Expression Viewer</a><br>
       Data documentation: <a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">ABC Atlas Access: Developing Mouse Visual Cortex</a>
     </p>
@@ -132,7 +132,7 @@
     </ol>
 
     <h2 id="structure">Repository structure</h2>
-    <pre><code>mouse-aging-app/
+    <pre><code>mouse-developing-vis-app/
 ├── .github/
 │   └── workflows/
 │       └── deploy-connect.yml
@@ -165,7 +165,7 @@
 
     <h3 id="github-repo">Create the GitHub repository</h3>
     <ol>
-      <li>Create a repository named <code>mouse-aging-app</code> in the appropriate GitHub organization.</li>
+      <li>Create a repository named <code>mouse-developing-vis-app</code> in the appropriate GitHub organization.</li>
       <li>Add the repository structure shown above.</li>
       <li>Keep <code>data/.gitkeep</code> empty so Git tracks the otherwise empty directory.</li>
       <li>Use the Python <code>.gitignore</code> template and add exclusions for large scientific files.</li>
@@ -697,7 +697,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-mouse-aging-app
+  group: deploy-mouse-developing-vis-app
   cancel-in-progress: true
 
 jobs:
@@ -911,7 +911,7 @@ git push origin main</code></pre>
       <li><a href="https://docs.posit.co/connect/how-to/use-renv-for-reproducible-r-deployments/" target="_blank" rel="noopener noreferrer">Using renv for reproducible Posit Connect deployments</a></li>
       <li><a href="https://docs.posit.co/connect/user/publishing-github-actions/" target="_blank" rel="noopener noreferrer">Publishing to Posit Connect from GitHub Actions</a></li>
       <li><a href="https://github.com/posit-dev/connect-actions" target="_blank" rel="noopener noreferrer">Posit Connect GitHub Actions</a></li>
-      <li><a href="https://github.com/AllenInstitute/mouse-aging-app" target="_blank" rel="noopener noreferrer">mouse-aging-app repository</a></li>
+      <li><a href="https://github.com/AllenInstitute/mouse-developing-vis-app" target="_blank" rel="noopener noreferrer">mouse-developing-vis-app repository</a></li>
     </ul>
 
     <div class="success"><strong>Rebuild criterion:</strong> A successful rebuild ends with a validated Code Ocean provenance chain, an anonymously readable public S3 back end, a locally and remotely tested Shiny application, a reproducible <code>renv.lock</code>, a working Posit Connect content item, and a GitHub Action that updates that content whenever <code>code/shiny/</code> changes.</div>
