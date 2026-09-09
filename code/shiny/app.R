@@ -1197,6 +1197,26 @@ ui <- function(request) {
               )
             ),
             conditionalPanel(
+              condition = "input.plot_type == 'dot'",
+              div(
+                class = "expression-scale-row",
+                numericInput(
+                  "dot_size_minimum",
+                  "Min. dot size",
+                  value = 1,
+                  min = 0,
+                  step = 0.5
+                ),
+                numericInput(
+                  "dot_size_maximum",
+                  "Max. dot size",
+                  value = 9,
+                  min = 0.5,
+                  step = 0.5
+                )
+              )
+            ),
+            conditionalPanel(
               condition = "input.plot_type == 'heatmap'",
               checkboxInput(
                 "show_heatmap_counts",
@@ -1446,6 +1466,8 @@ server <- function(input, output, session) {
     "automatic_expression_limits",
     "expression_minimum",
     "expression_maximum",
+    "dot_size_minimum",
+    "dot_size_maximum",
     "show_heatmap_counts",
     "show_points",
     "facets_per_row",
@@ -1521,6 +1543,8 @@ server <- function(input, output, session) {
       ),
       expression_minimum = isolate(input$expression_minimum),
       expression_maximum = isolate(input$expression_maximum),
+      dot_size_minimum = isolate(input$dot_size_minimum),
+      dot_size_maximum = isolate(input$dot_size_maximum),
       show_heatmap_counts = isolate(input$show_heatmap_counts),
       show_points = isolate(input$show_points),
       facets_per_row = isolate(input$facets_per_row),
@@ -1814,19 +1838,35 @@ server <- function(input, output, session) {
     )
     
     # open_dataset() deliberately supports one or many Parquet files in the
-    # selected gene partition.
-    gene_counts <- arrow::open_dataset(
+    # selected gene partition. Detection counts are optional during migration.
+    gene_dataset <- arrow::open_dataset(
       gene_source,
       format = "parquet",
       partitioning = NULL,
       unify_schemas = FALSE
-    ) |>
-      select(sample_id, summed_counts) |>
-      collect() |>
-      transmute(
-        sample_id = as.character(sample_id),
-        summed_counts = as.numeric(summed_counts)
-      )
+    )
+    has_detection_counts <- "number_of_cells_expressing" %in%
+      gene_dataset$schema$names
+    
+    if (has_detection_counts) {
+      gene_counts <- gene_dataset |>
+        select(sample_id, summed_counts, number_of_cells_expressing) |>
+        collect() |>
+        transmute(
+          sample_id = as.character(sample_id),
+          summed_counts = as.numeric(summed_counts),
+          number_of_cells_expressing = as.numeric(number_of_cells_expressing)
+        )
+    } else {
+      gene_counts <- gene_dataset |>
+        select(sample_id, summed_counts) |>
+        collect() |>
+        transmute(
+          sample_id = as.character(sample_id),
+          summed_counts = as.numeric(summed_counts),
+          number_of_cells_expressing = NA_real_
+        )
+    }
     
     if (nrow(gene_counts) == 0) {
       stop("No count data were found for gene: ", gene_symbol)
@@ -1838,8 +1878,28 @@ server <- function(input, output, session) {
         is.finite(summed_counts),
         is.finite(CPM_scaling_factor),
         CPM_scaling_factor >= 0
-      ) |>
+      )
+    
+    if (!"number_of_cells" %in% names(joined)) {
+      joined$number_of_cells <- NA_real_
+    }
+    
+    joined <- joined |>
       mutate(
+        number_of_cells = suppressWarnings(as.numeric(number_of_cells)),
+        number_of_cells_expressing = suppressWarnings(
+          as.numeric(number_of_cells_expressing)
+        ),
+        valid_detection_counts =
+          is.finite(number_of_cells) & number_of_cells > 0 &
+          is.finite(number_of_cells_expressing) &
+          number_of_cells_expressing >= 0 &
+          number_of_cells_expressing <= number_of_cells,
+        fraction_expressing = if_else(
+          valid_detection_counts,
+          number_of_cells_expressing / number_of_cells,
+          NA_real_
+        ),
         CPM = summed_counts * CPM_scaling_factor
       )
     
@@ -2506,6 +2566,20 @@ server <- function(input, output, session) {
       "expression_maximum",
       value = as.numeric(saved$expression_maximum)[1]
     )
+    if (!is.null(saved$dot_size_minimum)) {
+      updateNumericInput(
+        session,
+        "dot_size_minimum",
+        value = as.numeric(saved$dot_size_minimum)[1]
+      )
+    }
+    if (!is.null(saved$dot_size_maximum)) {
+      updateNumericInput(
+        session,
+        "dot_size_maximum",
+        value = as.numeric(saved$dot_size_maximum)[1]
+      )
+    }
     updateCheckboxInput(
       session, "show_heatmap_counts", value = isTRUE(saved$show_heatmap_counts)
     )
@@ -2665,6 +2739,8 @@ server <- function(input, output, session) {
       "automatic_expression_limits",
       value = TRUE
     )
+    updateNumericInput(session, "dot_size_minimum", value = 1)
+    updateNumericInput(session, "dot_size_maximum", value = 9)
     updateCheckboxInput(
       session,
       "show_heatmap_counts",
@@ -2727,6 +2803,8 @@ server <- function(input, output, session) {
       ),
       expression_minimum = input$expression_minimum,
       expression_maximum = input$expression_maximum,
+      dot_size_minimum = input$dot_size_minimum,
+      dot_size_maximum = input$dot_size_maximum,
       show_heatmap_counts = isTRUE(
         input$show_heatmap_counts
       ),
@@ -2923,6 +3001,17 @@ server <- function(input, output, session) {
       summarise(
         expression = mean(plotted_expression, na.rm = TRUE),
         n_observations = dplyr::n(),
+        detection_counts_available = any(valid_detection_counts),
+        expressing_cells = if (any(valid_detection_counts)) {
+          sum(number_of_cells_expressing[valid_detection_counts], na.rm = TRUE)
+        } else NA_real_,
+        total_cells = if (any(valid_detection_counts)) {
+          sum(number_of_cells[valid_detection_counts], na.rm = TRUE)
+        } else NA_real_,
+        fraction_expressing = if (
+          isTRUE(detection_counts_available) &&
+          is.finite(total_cells) && total_cells > 0
+        ) expressing_cells / total_cells else NA_real_,
         .groups = "drop"
       )
     
@@ -3522,51 +3611,92 @@ server <- function(input, output, session) {
     } else if (settings$plot_type == "dot") {
       plot_data <- summarized_data() |>
         mutate(
-          bounded_expression = scales::squish(
-            expression,
-            range = expression_limits
-          ),
+          bounded_expression = scales::squish(expression, range = expression_limits),
           size_expression = pmax(
-            if (settings$log_scale) {
-              bounded_expression
-            } else {
-              log1p(bounded_expression)
-            },
+            if (settings$log_scale) bounded_expression else log1p(bounded_expression),
             0.5
           )
         )
       
-      maximum_size_expression <- max(
-        if (settings$log_scale) {
-          expression_limits
-        } else {
-          log1p(expression_limits)
-        },
-        0.5,
-        na.rm = TRUE
+      dot_size_limits <- c(
+        suppressWarnings(as.numeric(settings$dot_size_minimum)),
+        suppressWarnings(as.numeric(settings$dot_size_maximum))
       )
+      validate(need(
+        length(dot_size_limits) == 2 &&
+          all(is.finite(dot_size_limits)) &&
+          dot_size_limits[[1]] >= 0 &&
+          dot_size_limits[[1]] < dot_size_limits[[2]],
+        "Min. dot size must be nonnegative and smaller than Max. dot size."
+      ))
       
-      ggplot(
-        plot_data,
-        aes(
-          x = .data[[settings$x_variable]],
-          y = .data[[settings$second_dimension]],
-          color = expression,
-          size = size_expression
+      use_fraction_expressing <-
+        "fraction_expressing" %in% names(plot_data) &&
+        any(is.finite(plot_data$fraction_expressing))
+      
+      if (use_fraction_expressing) {
+        size_break_fractions <- c(0, 0.25, 0.5, 0.75, 1)
+        plot_data <- plot_data |>
+          mutate(
+            dot_display_size = if_else(
+              is.finite(fraction_expressing),
+              sqrt(
+                dot_size_limits[[1]]^2 +
+                  scales::squish(fraction_expressing, c(0, 1)) *
+                  (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
+              ),
+              NA_real_
+            )
+          )
+        size_break_values <- sqrt(
+          dot_size_limits[[1]]^2 +
+            size_break_fractions *
+            (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
         )
-      ) +
-        geom_point(alpha = 0.9) +
+        plot <- ggplot(
+          plot_data,
+          aes(
+            x = .data[[settings$x_variable]],
+            y = .data[[settings$second_dimension]],
+            color = expression,
+            size = dot_display_size
+          )
+        ) +
+          geom_point(alpha = 0.9, na.rm = TRUE) +
+          scale_size_identity(
+            name = "Cells expressing",
+            breaks = size_break_values,
+            labels = scales::percent(size_break_fractions),
+            guide = "legend"
+          )
+      } else {
+        plot <- ggplot(
+          plot_data,
+          aes(
+            x = .data[[settings$x_variable]],
+            y = .data[[settings$second_dimension]],
+            color = expression,
+            size = size_expression
+          )
+        ) +
+          geom_point(alpha = 0.9) +
+          scale_size_continuous(
+            name = "ln(CPM + 1)",
+            range = dot_size_limits,
+            oob = scales::squish
+          ) +
+          labs(caption = paste(
+            "Fraction-expressing data are unavailable;",
+            "dot size represents expression."
+          ))
+      }
+      
+      plot +
         scale_color_viridis_c(
           option = "C",
           name = y_label,
           limits = expression_limits,
           oob = scales::squish
-        ) +
-        scale_size_area(
-          name = "ln(CPM + 1)",
-          limits = c(0, maximum_size_expression),
-          oob = scales::squish,
-          max_size = 9
         ) +
         labs(x = settings$x_variable, y = settings$second_dimension) +
         theme_minimal(base_size = 11) +
