@@ -902,6 +902,11 @@ ui <- function(request) {
         text-decoration: underline dotted;
         text-underline-offset: 2px;
       }
+      label.dropdown-help {
+        cursor: help;
+        text-decoration: underline dotted;
+        text-underline-offset: 2px;
+      }
       .expression-scale-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -939,6 +944,52 @@ ui <- function(request) {
       "
       ))
     ),
+    tags$script(HTML(paste(
+      c(
+        '(function() {',
+        '  const dropdownHelp = {',
+        '    gene: "Click the drop-down box to select or search for a gene symbol.",',
+        '    filter_fields: "Select one or more metadata fields used to filter the loaded gene data.",',
+        '    plot_type: "Click the drop-down box to select the type of plot to view.",',
+        '    trajectory_measure: "Choose whether the plot displays gene expression or the fraction of cells expressing the gene.",',
+        '    progression_variable: "Select the ordered developmental variable used on the trajectory axis.",',
+        '    facet_variable: "Select the metadata field used to divide the trajectory into separate panels.",',
+        '    color_variable: "Select the metadata field used to color trajectory observations and smoothers.",',
+        '    smoother: "Select the smoothing method used to summarize the trajectory.",',
+        '    facets_per_row: "Choose the maximum number of facet panels displayed in each row.",',
+        '    facet_row_height: "Choose the vertical height assigned to each row of facet panels.",',
+        '    violin_display: "Choose whether group distributions are displayed as violins or boxplots.",',
+        '    violin_facets_per_page: "Choose how many facets are rendered on each trajectory or violin page.",',
+        '    violin_page: "Choose which page of facets to display.",',
+        '    comparison_gene: "Select or search for the second gene used in the correlation plot.",',
+        '    correlation_color_variable: "Select the metadata field used to color points in the two-gene plot.",',
+        '    x_variable: "Select the metadata field shown on the horizontal axis.",',
+        '    second_dimension: "Select the metadata field shown on the vertical axis or used for violin facets."',
+        '  };',
+        '  function applyDropdownHelp() {',
+        '    document.querySelectorAll("select[id]").forEach(function(select) {',
+        '      const container = select.closest(".form-group, .shiny-input-container");',
+        '      const label = container ? container.querySelector("label") : null;',
+        '      if (!label) return;',
+        '      const cleanLabel = label.textContent.trim();',
+        '      const help = dropdownHelp[select.id] ||',
+        '        ("Click the drop-down box to select " + cleanLabel.toLowerCase() + ".");',
+        '      label.setAttribute("title", help);',
+        '      label.classList.add("dropdown-help");',
+        '    });',
+        '  }',
+        '  document.addEventListener("DOMContentLoaded", function() {',
+        '    applyDropdownHelp();',
+        '    new MutationObserver(applyDropdownHelp).observe(',
+        '      document.body,',
+        '      { childList: true, subtree: true }',
+        '    );',
+        '  });',
+        '  document.addEventListener("shiny:connected", applyDropdownHelp);',
+        '})();'
+      ),
+      collapse = "\n"
+    ))),
     
     sidebar = sidebar(
       width = 320,
@@ -1072,7 +1123,7 @@ ui <- function(request) {
                 "None" = "none"
               ),
               selected = "loess"
-            ),
+            )
           ),
           conditionalPanel(
             condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
@@ -1115,6 +1166,41 @@ ui <- function(request) {
                 ),
                 selected = 300
               )
+            )
+          ),
+          conditionalPanel(
+            condition = "input.plot_type == 'violin'",
+            selectInput(
+              "violin_display",
+              "Distribution display",
+              choices = c(
+                "Violin" = "violin",
+                "Boxplot" = "boxplot"
+              ),
+              selected = "violin"
+            ),
+            checkboxInput(
+              "show_violin_points",
+              "Show individual observations",
+              TRUE
+            )
+          ),
+          conditionalPanel(
+            condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
+            div(
+              class = "filter-row",
+              selectInput(
+                "violin_facets_per_page",
+                "Facets per page",
+                choices = c(
+                  "8" = 8,
+                  "12" = 12,
+                  "20" = 20,
+                  "All" = "all"
+                ),
+                selected = 12
+              ),
+              uiOutput("violin_page_control")
             )
           ),
           conditionalPanel(
@@ -1283,8 +1369,8 @@ ui <- function(request) {
             "Reset plot options",
             class = "btn-outline-light btn-sm mt-1",
             width = "100%"
-          ),
-        ),
+          )
+        )
       ),
       
       hr(style = "margin: 1px 0;"),
@@ -1505,6 +1591,10 @@ server <- function(input, output, session) {
     "dot_size_maximum",
     "show_heatmap_counts",
     "show_points",
+    "violin_display",
+    "violin_facets_per_page",
+    "violin_page",
+    "show_violin_points",
     "facets_per_row",
     "facet_row_height",
     "statistics_filter_gene_symbol",
@@ -1585,6 +1675,10 @@ server <- function(input, output, session) {
       dot_size_maximum = isolate(input$dot_size_maximum),
       show_heatmap_counts = isolate(input$show_heatmap_counts),
       show_points = isolate(input$show_points),
+      violin_display = isolate(input$violin_display),
+      violin_facets_per_page = isolate(input$violin_facets_per_page),
+      violin_page = isolate(input$violin_page),
+      show_violin_points = isolate(input$show_violin_points),
       facets_per_row = isolate(input$facets_per_row),
       facet_row_height = isolate(input$facet_row_height)
     )
@@ -2657,6 +2751,30 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session, "show_points", value = isTRUE(saved$show_points)
     )
+    if (!is.null(saved$violin_display)) {
+      updateSelectInput(session, "violin_display", selected = saved$violin_display)
+    }
+    if (!is.null(saved$violin_facets_per_page)) {
+      updateSelectInput(
+        session,
+        "violin_facets_per_page",
+        selected = as.character(saved$violin_facets_per_page)[1]
+      )
+    }
+    if (!is.null(saved$violin_page)) {
+      updateSelectInput(
+        session,
+        "violin_page",
+        selected = as.character(saved$violin_page)[1]
+      )
+    }
+    if (!is.null(saved$show_violin_points)) {
+      updateCheckboxInput(
+        session,
+        "show_violin_points",
+        value = isTRUE(saved$show_violin_points)
+      )
+    }
     if (!is.null(saved$facets_per_row)) {
       updateSelectInput(
         session,
@@ -2841,6 +2959,10 @@ server <- function(input, output, session) {
     updateNumericInput(session, "correlation_size_maximum", value = 7)
     updateSelectInput(session, "smoother", selected = "loess")
     updateCheckboxInput(session, "show_points", value = TRUE)
+    updateSelectInput(session, "violin_display", selected = "violin")
+    updateSelectInput(session, "violin_facets_per_page", selected = "12")
+    updateSelectInput(session, "violin_page", selected = "1")
+    updateCheckboxInput(session, "show_violin_points", value = TRUE)
     updateSelectInput(session, "facets_per_row", selected = "3")
     updateSelectInput(session, "facet_row_height", selected = "300")
     updateSelectInput(session, "x_variable", selected = default_x)
@@ -2903,6 +3025,26 @@ server <- function(input, output, session) {
       comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
+      violin_display = if (
+        is.null(input$violin_display) || length(input$violin_display) == 0
+      ) "violin" else as.character(input$violin_display[[1]]),
+      violin_facets_per_page = if (
+        is.null(input$violin_facets_per_page) ||
+        length(input$violin_facets_per_page) == 0
+      ) "12" else as.character(input$violin_facets_per_page[[1]]),
+      violin_page = {
+        page_value <- suppressWarnings(as.integer(input$violin_page))
+        if (length(page_value) == 0 || !is.finite(page_value[[1]])) {
+          1L
+        } else {
+          page_value[[1]]
+        }
+      },
+      show_violin_points = if (is.null(input$show_violin_points)) {
+        TRUE
+      } else {
+        isTRUE(input$show_violin_points)
+      },
       facets_per_row = as.integer(input$facets_per_row),
       facet_row_height = as.integer(input$facet_row_height),
       x_variable = input$x_variable,
@@ -2933,6 +3075,71 @@ server <- function(input, output, session) {
     priority = 100
   )
   
+  output$violin_page_control <- renderUI({
+    req(
+      input$plot_type %in% c("trajectory", "violin"),
+      gene_data()
+    )
+    if (
+      identical(input$plot_type, "trajectory") &&
+      identical(input$facet_variable, "none")
+    ) {
+      return(NULL)
+    }
+    data <- apply_filter_specification(
+      gene_data(),
+      active_filter_specification()
+    )
+    if (isTRUE(input$omit_zero_values)) {
+      data <- data |> filter(summed_counts > 0)
+    }
+    facet_field <- if (identical(input$plot_type, "trajectory")) {
+      input$facet_variable
+    } else {
+      input$second_dimension
+    }
+    if (is.null(facet_field) || !facet_field %in% names(data)) return(NULL)
+    number_of_facets <- dplyr::n_distinct(data[[facet_field]], na.rm = TRUE)
+    per_page_value <- input$violin_facets_per_page
+    if (
+      is.null(per_page_value) ||
+      length(per_page_value) == 0 ||
+      is.na(per_page_value[[1]]) ||
+      !nzchar(as.character(per_page_value[[1]]))
+    ) {
+      per_page_value <- "12"
+    } else {
+      per_page_value <- as.character(per_page_value[[1]])
+    }
+    per_page <- if (identical(per_page_value, "all")) {
+      max(1L, number_of_facets)
+    } else {
+      parsed_per_page <- suppressWarnings(as.integer(per_page_value))
+      if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page)) {
+        parsed_per_page <- 12L
+      }
+      max(1L, parsed_per_page)
+    }
+    page_count <- max(1L, ceiling(number_of_facets / per_page))
+    current <- suppressWarnings(as.integer(input$violin_page))
+    if (
+      length(current) == 0 ||
+      !is.finite(current[[1]]) ||
+      current[[1]] < 1L ||
+      current[[1]] > page_count
+    ) {
+      current <- 1L
+    } else {
+      current <- current[[1]]
+    }
+    selectInput(
+      "violin_page",
+      "Page Number",
+      choices = setNames(seq_len(page_count), paste0("Page ", seq_len(page_count), " of ", page_count)),
+      selected = current
+    )
+  })
+  
   output$plot_size_css <- renderUI({
     settings <- plot_settings()
     if (is.null(settings)) return(NULL)
@@ -2951,12 +3158,30 @@ server <- function(input, output, session) {
       settings$second_dimension
     }
     number_of_facets <- dplyr::n_distinct(data[[facet_field]], na.rm = TRUE)
+    if (settings$plot_type %in% c("trajectory", "violin")) {
+      per_page_value <- settings$violin_facets_per_page
+      if (is.null(per_page_value) || length(per_page_value) == 0) {
+        per_page_value <- "12"
+      } else {
+        per_page_value <- as.character(per_page_value[[1]])
+      }
+      per_page <- if (identical(per_page_value, "all")) {
+        max(1L, number_of_facets)
+      } else {
+        parsed_per_page <- suppressWarnings(as.integer(per_page_value))
+        if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page[[1]])) {
+          parsed_per_page <- 12L
+        }
+        max(1L, parsed_per_page[[1]])
+      }
+      number_of_facets <- min(number_of_facets, per_page)
+    }
     facets_per_row <- max(1L, as.integer(settings$facets_per_row))
     facet_height <- max(150L, as.integer(settings$facet_row_height))
     number_of_rows <- max(1L, ceiling(number_of_facets / facets_per_row))
     plot_height <- number_of_rows * facet_height
     tags$style(HTML(sprintf(
-      ".plot-wrapper { overflow-y: auto !important; overflow-x: hidden !important; } .plot-wrapper .shiny-spinner-output-container, .plot-wrapper .load-container { height: auto !important; min-height: %dpx !important; overflow: visible !important; } #expression_plot { height: %dpx !important; min-height: %dpx !important; }",
+      ".plot-wrapper { height: calc(90vh - 233px) !important; overflow-y: auto !important; overflow-x: hidden !important; } .plot-wrapper .shiny-spinner-output-container, .plot-wrapper .load-container { height: auto !important; min-height: %dpx !important; overflow: visible !important; } #expression_plot { height: %dpx !important; min-height: %dpx !important; }",
       plot_height, plot_height, plot_height
     )))
   })
@@ -3458,6 +3683,33 @@ server <- function(input, output, session) {
     )
   })
   
+  displayed_facet_levels <- function(data, field, settings) {
+    levels <- field_levels(data, field)
+    levels <- levels[
+      levels %in% as.character(data[[field]])
+    ]
+    per_page_value <- settings$violin_facets_per_page
+    if (is.null(per_page_value) || length(per_page_value) == 0) {
+      per_page_value <- "12"
+    } else {
+      per_page_value <- as.character(per_page_value[[1]])
+    }
+    per_page <- if (identical(per_page_value, "all")) {
+      max(1L, length(levels))
+    } else {
+      parsed <- suppressWarnings(as.integer(per_page_value))
+      if (length(parsed) == 0 || !is.finite(parsed[[1]])) parsed <- 12L
+      max(1L, parsed[[1]])
+    }
+    page_count <- max(1L, ceiling(length(levels) / per_page))
+    page <- suppressWarnings(as.integer(settings$violin_page))
+    if (length(page) == 0 || !is.finite(page[[1]])) page <- 1L
+    page <- min(max(page[[1]], 1L), page_count)
+    first <- (page - 1L) * per_page + 1L
+    last <- min(page * per_page, length(levels))
+    if (length(levels) == 0 || first > last) character() else levels[seq.int(first, last)]
+  }
+  
   output$expression_plot <- renderPlot({
     settings <- plot_settings()
     data <- filtered_data()
@@ -3674,6 +3926,20 @@ server <- function(input, output, session) {
       if (facet_enabled) {
         plot_data <- plot_data |>
           filter(!is.na(.data[[settings$facet_variable]]))
+        displayed_facets <- displayed_facet_levels(
+          plot_data,
+          settings$facet_variable,
+          settings
+        )
+        plot_data <- plot_data |>
+          filter(
+            as.character(.data[[settings$facet_variable]]) %in%
+              displayed_facets
+          )
+        plot_data[[settings$facet_variable]] <- factor(
+          as.character(plot_data[[settings$facet_variable]]),
+          levels = displayed_facets
+        )
       }
       if (color_enabled) {
         plot_data <- plot_data |>
@@ -3918,7 +4184,7 @@ server <- function(input, output, session) {
     } else {
       data <- factor_field(data, settings$x_variable)
       data <- factor_field(data, settings$second_dimension)
-      plot_data <- data |>
+      all_plot_data <- data |>
         filter(
           !is.na(.data[[settings$x_variable]]),
           !is.na(.data[[settings$second_dimension]]),
@@ -3932,31 +4198,94 @@ server <- function(input, output, session) {
         ungroup()
       
       validate(need(
-        nrow(plot_data) >= 2,
+        nrow(all_plot_data) >= 2,
         "No violin group has at least two observations."
       ))
       
-      ggplot(
+      facet_levels <- field_levels(
+        all_plot_data,
+        settings$second_dimension
+      )
+      facet_levels <- facet_levels[
+        facet_levels %in% as.character(all_plot_data[[settings$second_dimension]])
+      ]
+      per_page_value <- settings$violin_facets_per_page
+      if (
+        is.null(per_page_value) ||
+        length(per_page_value) == 0 ||
+        is.na(per_page_value[[1]])
+      ) {
+        per_page_value <- "12"
+      } else {
+        per_page_value <- as.character(per_page_value[[1]])
+      }
+      facets_per_page <- if (identical(per_page_value, "all")) {
+        max(1L, length(facet_levels))
+      } else {
+        parsed_per_page <- suppressWarnings(as.integer(per_page_value))
+        if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page[[1]])) {
+          parsed_per_page <- 12L
+        }
+        max(1L, parsed_per_page[[1]])
+      }
+      page_count <- max(1L, ceiling(length(facet_levels) / facets_per_page))
+      selected_page <- suppressWarnings(as.integer(settings$violin_page))
+      if (length(selected_page) == 0 || !is.finite(selected_page[[1]])) {
+        selected_page <- 1L
+      } else {
+        selected_page <- selected_page[[1]]
+      }
+      selected_page <- min(max(selected_page, 1L), page_count)
+      first_facet <- (selected_page - 1L) * facets_per_page + 1L
+      last_facet <- min(selected_page * facets_per_page, length(facet_levels))
+      displayed_facets <- facet_levels[seq.int(first_facet, last_facet)]
+      
+      plot_data <- all_plot_data |>
+        filter(
+          as.character(.data[[settings$second_dimension]]) %in% displayed_facets
+        )
+      plot_data[[settings$second_dimension]] <- factor(
+        as.character(plot_data[[settings$second_dimension]]),
+        levels = displayed_facets
+      )
+      
+      plot <- ggplot(
         plot_data,
         aes(
           x = .data[[settings$x_variable]],
           y = plotted_expression,
           fill = .data[[settings$x_variable]]
         )
-      ) +
-        geom_violin(
+      )
+      
+      if (identical(settings$violin_display, "boxplot")) {
+        plot <- plot + geom_boxplot(
+          width = 0.65,
+          outlier.shape = NA,
+          color = "#214E68",
+          alpha = 0.75,
+          na.rm = TRUE
+        )
+      } else {
+        plot <- plot + geom_violin(
           scale = "width",
           trim = TRUE,
           color = "#214E68",
           alpha = 0.75,
           na.rm = TRUE
-        ) +
-        geom_jitter(
+        )
+      }
+      
+      if (isTRUE(settings$show_violin_points)) {
+        plot <- plot + geom_jitter(
           width = 0.10,
           color = "black",
           alpha = 0.20,
           size = 0.35
-        ) +
+        )
+      }
+      
+      plot +
         stat_summary(
           fun.data = mean_se,
           geom = "errorbar",
