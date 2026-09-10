@@ -1,0 +1,59 @@
+token,type,name
+Astro,cell_type,astrocyte
+CNU,structure,Cerebral nuclei
+CR,cell_type,Cajal-Retzius cell
+CTX,structure,Cerebral cortex
+Glioblast,cell_type,precursor cells of glial cells
+IMN,cell_type,immature neuron
+IP,cell_type,Intermediate progenitors
+IT,projection_type,intratelencephalic-projecting glutamatergic cortical neuron
+Immune,cell_type,leukocyte
+NEC,cell_type,Neuroepithelial cells
+OPC,cell_type,oligodendrocyte precursor cell
+RG,cell_type,Radial glia
+Vascular,anatomical,vascular system
+nonIT,projection_type,non-intratelencephalic-projecting glutamatergic cortical neuron
+ABC,cell_type,arachnoid barrier cell
+BAM,cell_type,border-associated macrophage
+CGE,transient_structure,caudal ganglionic eminence
+CLA,structure,Claustrum
+Endo,cell_type,endothelial cell
+L2,anatomical,cortical layer 2
+L4,anatomical,cortical layer 4
+L5,anatomical,cortical layer 5
+L6,anatomical,cortical layer 6
+L6b,anatomical,cortical layer 6b
+Lamp5,gene,"lysosomal-associated membrane protein family, member 5"
+MGE,transient_structure,medial ganglionic eminence
+Microglia,cell_type,microglial cell
+Oligo,cell_type,oligodendrocyte
+Peri,cell_type,pericyte
+Pvalb,gene,parvalbumin
+SMC,cell_type,smooth muscle cell
+Sncg,gene,"synuclein, gamma"
+Sst,gene,somatostatin
+VLMC,cell_type,vascular leptomeningeal cell
+Vip,gene,vasoactive intestinal polypeptide
+COP,cell_type,committed oligodendrocyte precursor
+NFOL,cell_type,newly formed oligodendrocyte
+MFOL,cell_type,myelin-forming oligodendrocyte
+MOL,cell_type,mature oligodendrocyte
+Epen,cell_type,ependymal cell
+Glut,neurotransmission,glutamatergic neuron
+NN,cell_type,non-neuronal cell
+TE,anatomical,telencephalon
+GABA,neurotransmission,GABAergic neuron
+EPd,structure,"Endopiriform nucleus, dorsal part"
+L3,anatomical,cortical layer 3
+ET,projection_type,extratelencephalic-projecting glutamatergic cortical neuron
+NP,projection_type,near-projecting glutamatergic cortical neuron
+CT,projection_type,corticothalamic-projecting glutamatergic cortical neuron
+Gaba,neurotransmission,GABAergic neuron
+Lhx6,gene,LIM homeobox protein 6
+chandelier,cell_type,chandelier cell
+Chodl,gene,chondrolectin
+SVZ,transient_structure,subventricular zone
+ENT,structure,Entorhinal area
+Car3,gene,carbonic anhydrase 3
+Upper Layer,anatomical,Upper Layer
+Deep Layer,anatomical,Deep Layer

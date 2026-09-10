@@ -140,6 +140,51 @@ table_column_definitions <- table_column_definitions |>
   distinct(column_names, .keep_all = TRUE)
 
 # ============================================================
+# Optional searchable glossary
+# ============================================================
+tokens_path <- file.path("www", "tokens.csv")
+tokens_available <- FALSE
+tokens <- data.frame(
+  token = character(),
+  type = character(),
+  name = character(),
+  stringsAsFactors = FALSE
+)
+if (file.exists(tokens_path)) {
+  tokens_candidate <- tryCatch(
+    read.csv(
+      tokens_path,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    ),
+    error = function(e) NULL
+  )
+  required_token_columns <- c("token", "type", "name")
+  if (
+    !is.null(tokens_candidate) &&
+    all(required_token_columns %in% names(tokens_candidate))
+  ) {
+    tokens <- tokens_candidate |>
+      transmute(
+        token = trimws(as.character(token)),
+        type = trimws(as.character(type)),
+        name = trimws(as.character(name))
+      ) |>
+      filter(
+        !is.na(token),
+        nzchar(token),
+        !is.na(type),
+        nzchar(type),
+        !is.na(name),
+        nzchar(name)
+      ) |>
+      distinct(token, .keep_all = TRUE) |>
+      arrange(tolower(token), token)
+    tokens_available <- nrow(tokens) > 0
+  }
+}
+
+# ============================================================
 # Validate and align supporting data
 # ============================================================
 
@@ -181,11 +226,20 @@ if (!identical(
   stop("CPM_scaling.csv library order does not match obs_metadata.parquet.")
 }
 
+if (!"donor_age" %in% names(metadata)) {
+  stop("obs_metadata.parquet must contain donor_age to derive stage.")
+}
+
 metadata <- metadata |>
   mutate(
     sample_id = as.character(sample_id),
     library_label = as.character(library_label),
-    CPM_scaling_factor = as.numeric(cpm_scaling$CPM_scaling_factor)
+    CPM_scaling_factor = as.numeric(cpm_scaling$CPM_scaling_factor),
+    stage = case_when(
+      grepl("^E[0-9]+(\\.[0-9]+)?$", trimws(as.character(donor_age))) ~ "embryonic",
+      grepl("^P[0-9]+(\\.[0-9]+)?$", trimws(as.character(donor_age))) ~ "postnatal",
+      TRUE ~ NA_character_
+    )
   )
 
 if (anyDuplicated(metadata$sample_id)) {
@@ -381,6 +435,7 @@ preferred_fields <- unique(c(
   subcluster_field,
   region_field,
   age_field,
+  "stage",
   "sex",
   "donor_sex",
   "library_label",
@@ -907,6 +962,20 @@ ui <- function(request) {
         text-decoration: underline dotted;
         text-underline-offset: 2px;
       }
+      .glossary-panel {
+        margin: 0;
+      }
+      .glossary-panel .shiny-input-container {
+        margin-bottom: 2px !important;
+      }
+      .glossary-definition {
+        min-height: 18px;
+        font-size: 0.75rem;
+        line-height: 1.15;
+        color: white;
+        margin: 1px 0 0;
+        overflow-wrap: anywhere;
+      }
       .expression-scale-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1062,6 +1131,7 @@ ui <- function(request) {
             FALSE
           ),
           hr(),
+          br(),
           h4("Plot"),
           selectInput(
             "plot_type",
@@ -1372,8 +1442,31 @@ ui <- function(request) {
           )
         )
       ),
-      
-      hr(style = "margin: 1px 0;"),
+      if (tokens_available) {
+        tagList(
+          hr(style = "margin: 3px 0;"),
+          div(
+            class = "glossary-panel",
+            selectizeInput(
+              "glossary_token",
+              "Glossary of terms",
+              choices = setNames(tokens$token, tokens$token),
+              selected = character(),
+              multiple = FALSE,
+              options = list(
+                placeholder = "Type or select a term",
+                maxOptions = nrow(tokens),
+                create = FALSE
+              )
+            ),
+            div(
+              class = "glossary-definition",
+              textOutput("glossary_definition", inline = TRUE)
+            )
+          ),
+          hr(style = "margin: 3px 0;")
+        )
+      },
       
       h4(
         "Contribute",
@@ -1547,6 +1640,28 @@ ui <- function(request) {
 # ============================================================
 
 server <- function(input, output, session) {
+  output$glossary_definition <- renderText({
+    req(tokens_available)
+    selected_token <- input$glossary_token
+    if (
+      is.null(selected_token) ||
+      length(selected_token) != 1 ||
+      is.na(selected_token) ||
+      !nzchar(selected_token)
+    ) {
+      return("")
+    }
+    match_index <- match(selected_token, tokens$token)
+    if (is.na(match_index)) return("")
+    paste0(
+      tokens$token[[match_index]],
+      ": ",
+      tokens$name[[match_index]],
+      " (",
+      tokens$type[[match_index]],
+      ")"
+    )
+  })
   gene_data <- reactiveVal(NULL)
   loaded_gene <- reactiveVal(NULL)
   requested_gene <- reactiveVal(default_gene)
