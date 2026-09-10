@@ -1025,6 +1025,18 @@ ui <- function(request) {
             selected = "trajectory"
           ),
           conditionalPanel(
+            condition = "input.plot_type != 'dot'",
+            selectInput(
+              "trajectory_measure",
+              "Gene metric",
+              choices = c(
+                "Gene expression" = "expression",
+                "Fraction of cells expressing" = "fraction"
+              ),
+              selected = "expression"
+            )
+          ),
+          conditionalPanel(
             condition = "input.plot_type == 'trajectory'",
             selectInput(
               "progression_variable",
@@ -1164,14 +1176,34 @@ ui <- function(request) {
               "show_orthogonal_fit",
               "Show orthogonal fit line",
               TRUE
+            ),
+            div(
+              class = "expression-scale-row",
+              numericInput(
+                "correlation_size_minimum",
+                "Min. dot size",
+                value = 1.5,
+                min = 0,
+                step = 0.5
+              ),
+              numericInput(
+                "correlation_size_maximum",
+                "Max. dot size",
+                value = 7,
+                min = 0.5,
+                step = 0.5
+              )
             )
           ),
           conditionalPanel(
             condition = "input.plot_type != 'correlation'",
-            checkboxInput(
-              "log_scale",
-              "Plot ln(CPM + 1)",
-              TRUE
+            conditionalPanel(
+              condition = "input.trajectory_measure == 'expression'",
+              checkboxInput(
+                "log_scale",
+                "Plot ln(CPM + 1)",
+                TRUE
+              )
             ),
             checkboxInput(
               "automatic_expression_limits",
@@ -1451,6 +1483,7 @@ server <- function(input, output, session) {
     "filter_fields",
     "omit_zero_values",
     "plot_type",
+    "trajectory_measure",
     "progression_variable",
     "facet_variable",
     "color_variable",
@@ -1462,6 +1495,8 @@ server <- function(input, output, session) {
     "correlation_axis_minimum",
     "correlation_axis_maximum",
     "show_orthogonal_fit",
+    "correlation_size_minimum",
+    "correlation_size_maximum",
     "log_scale",
     "automatic_expression_limits",
     "expression_minimum",
@@ -1518,6 +1553,7 @@ server <- function(input, output, session) {
       stacked_filter_values = stacked_filter_values,
       omit_zero_values = isolate(input$omit_zero_values),
       plot_type = isolate(input$plot_type),
+      trajectory_measure = isolate(input$trajectory_measure),
       progression_variable = isolate(input$progression_variable),
       facet_variable = isolate(input$facet_variable),
       color_variable = isolate(input$color_variable),
@@ -1537,6 +1573,8 @@ server <- function(input, output, session) {
         input$correlation_axis_maximum
       ),
       show_orthogonal_fit = isolate(input$show_orthogonal_fit),
+      correlation_size_minimum = isolate(input$correlation_size_minimum),
+      correlation_size_maximum = isolate(input$correlation_size_maximum),
       log_scale = isolate(input$log_scale),
       automatic_expression_limits = isolate(
         input$automatic_expression_limits
@@ -2070,7 +2108,12 @@ server <- function(input, output, session) {
         filter(summed_counts > 0)
     }
     
-    values <- if (isTRUE(input$log_scale)) {
+    values <- if (
+      input$plot_type %in% c("trajectory", "heatmap", "violin") &&
+      identical(input$trajectory_measure, "fraction")
+    ) {
+      filtered$fraction_expressing
+    } else if (isTRUE(input$log_scale)) {
       log1p(filtered$CPM)
     } else {
       filtered$CPM
@@ -2083,7 +2126,14 @@ server <- function(input, output, session) {
     
     c(
       minimum = 0,
-      maximum = max(values, na.rm = TRUE)
+      maximum = if (
+        identical(input$plot_type, "trajectory") &&
+        identical(input$trajectory_measure, "fraction")
+      ) {
+        1
+      } else {
+        max(values, na.rm = TRUE)
+      }
     )
   })
   
@@ -2503,6 +2553,13 @@ server <- function(input, output, session) {
     updateSelectInput(
       session, "plot_type", selected = as.character(saved$plot_type)[1]
     )
+    if (!is.null(saved$trajectory_measure)) {
+      updateSelectInput(
+        session,
+        "trajectory_measure",
+        selected = as.character(saved$trajectory_measure)[1]
+      )
+    }
     updateSelectInput(
       session,
       "progression_variable",
@@ -2548,6 +2605,20 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session, "show_orthogonal_fit", value = isTRUE(saved$show_orthogonal_fit)
     )
+    if (!is.null(saved$correlation_size_minimum)) {
+      updateNumericInput(
+        session,
+        "correlation_size_minimum",
+        value = as.numeric(saved$correlation_size_minimum)[1]
+      )
+    }
+    if (!is.null(saved$correlation_size_maximum)) {
+      updateNumericInput(
+        session,
+        "correlation_size_maximum",
+        value = as.numeric(saved$correlation_size_maximum)[1]
+      )
+    }
     updateCheckboxInput(
       session, "log_scale", value = isTRUE(saved$log_scale)
     )
@@ -2747,6 +2818,7 @@ server <- function(input, output, session) {
       value = TRUE
     )
     updateSelectInput(session, "plot_type", selected = "trajectory")
+    updateSelectInput(session, "trajectory_measure", selected = "expression")
     updateSelectInput(session, "progression_variable", selected = age_field)
     updateSelectInput(session, "facet_variable", selected = default_facet)
     updateSelectInput(session, "color_variable", selected = default_color)
@@ -2765,6 +2837,8 @@ server <- function(input, output, session) {
       "show_orthogonal_fit",
       value = TRUE
     )
+    updateNumericInput(session, "correlation_size_minimum", value = 1.5)
+    updateNumericInput(session, "correlation_size_maximum", value = 7)
     updateSelectInput(session, "smoother", selected = "loess")
     updateCheckboxInput(session, "show_points", value = TRUE)
     updateSelectInput(session, "facets_per_row", selected = "3")
@@ -2795,6 +2869,7 @@ server <- function(input, output, session) {
     
     list(
       plot_type = input$plot_type,
+      trajectory_measure = input$trajectory_measure,
       filters = active_filter_specification(),
       omit_zero_values = isTRUE(input$omit_zero_values),
       log_scale = isTRUE(input$log_scale),
@@ -2823,6 +2898,8 @@ server <- function(input, output, session) {
       show_orthogonal_fit = isTRUE(
         input$show_orthogonal_fit
       ),
+      correlation_size_minimum = input$correlation_size_minimum,
+      correlation_size_maximum = input$correlation_size_maximum,
       comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
@@ -2903,9 +2980,23 @@ server <- function(input, output, session) {
       "Fewer than two observations remain after filtering."
     ))
     
+    use_fraction_measure <-
+      settings$plot_type %in% c("trajectory", "heatmap", "violin") &&
+      identical(settings$trajectory_measure, "fraction")
+    
+    if (use_fraction_measure) {
+      validate(need(
+        "fraction_expressing" %in% names(data) &&
+          any(is.finite(data$fraction_expressing)),
+        "Fraction-expressing data are unavailable for this gene."
+      ))
+    }
+    
     data |>
       mutate(
-        plotted_expression = if (settings$log_scale) {
+        plotted_expression = if (use_fraction_measure) {
+          fraction_expressing
+        } else if (settings$log_scale) {
           log1p(CPM)
         } else {
           CPM
@@ -2954,7 +3045,7 @@ server <- function(input, output, session) {
                            value=as.numeric(.data[[value_field]])) |>
       filter(!is.na(x),nzchar(x),!is.na(y),nzchar(y),is.finite(value))
     if (nrow(m)<3 || !is.finite(var(m$value)) || var(m$value)==0)
-      return(list(available=FALSE,reason="Matrix autocorrelation requires at least three occupied cells with variable expression."))
+      return(list(available=FALSE,reason="Matrix autocorrelation requires at least three occupied cells with variation in the selected metric."))
     xo <- has_defensible_order(data,x_field); yo <- has_defensible_order(data,y_field)
     if (!xo && !yo) return(list(available=FALSE,reason="Matrix autocorrelation was not calculated because neither axis has a defined numeric or value-set order."))
     m$xi <- match(m$x,field_levels(data,x_field)); m$yi <- match(m$y,field_levels(data,y_field))
@@ -3025,6 +3116,29 @@ server <- function(input, output, session) {
                            permutations=999L,seed=19050L)
   })
   
+  dot_fraction_autocorrelation <- reactive({
+    settings <- plot_settings()
+    req(identical(settings$plot_type, "dot"))
+    data <- summarized_data()
+    if (
+      !"fraction_expressing" %in% names(data) ||
+      !any(is.finite(data$fraction_expressing))
+    ) {
+      return(list(
+        available = FALSE,
+        reason = "Fraction-expressing Moran's I is unavailable for this gene."
+      ))
+    }
+    moran_rook_permutation(
+      data,
+      settings$x_variable,
+      settings$second_dimension,
+      value_field = "fraction_expressing",
+      permutations = 999L,
+      seed = 19050L
+    )
+  })
+  
   trajectory_statistics <- reactive({
     settings <- plot_settings(); req(identical(settings$plot_type,"trajectory"))
     data <- filtered_data(); field <- settings$progression_variable
@@ -3038,7 +3152,7 @@ server <- function(input, output, session) {
     test<-suppressWarnings(cor.test(d$.progression_stat,d$plotted_expression,method="spearman",exact=FALSE))
     data.frame(facet=name,rho=unname(test$estimate),p=test$p.value,n=nrow(d),stringsAsFactors=FALSE) })
     result <- bind_rows(rows)
-    if(!nrow(result)) return(list(available=FALSE,reason="No trajectory facet had at least 5 observations, 3 progression levels, and variable expression."))
+    if(!nrow(result)) return(list(available=FALSE,reason="No trajectory facet had at least 5 observations, 3 progression levels, and variation in the selected metric."))
     result$adjusted_p <- if(nrow(result)>1) p.adjust(result$p,method="BH") else result$p
     result <- result[order(result$adjusted_p,-abs(result$rho),result$facet),,drop=FALSE]
     list(available=TRUE,results=result,faceted=facet_enabled)
@@ -3100,7 +3214,7 @@ server <- function(input, output, session) {
         available = FALSE,
         reason = paste(
           "No violin facet had at least two groups with two observations",
-          "per group and variable expression."
+          "per group and variation in the selected metric."
         )
       ))
     }
@@ -3121,10 +3235,47 @@ server <- function(input, output, session) {
   output$plot_statistics_note <- renderText({
     settings <- plot_settings()
     if(settings$plot_type %in% c("heatmap","dot")) {
-      r<-matrix_autocorrelation(); if(!isTRUE(r$available)) return(r$reason)
-      return(paste0("Evidence of expression autocorrelation across the current matrix arrangement: Moran's I = ",
-                    formatC(r$statistic,digits=3,format="f"),", one-sided permutation p = ",
-                    format.pval(r$p_value,digits=3,eps=1e-3)," (",r$occupied_cells," occupied cells; ",r$permutations," permutations)."))
+      r <- matrix_autocorrelation()
+      if (!isTRUE(r$available)) return(r$reason)
+      format_moran <- function(result, label) {
+        paste0(
+          label,
+          " Moran's I = ",
+          formatC(result$statistic, digits = 3, format = "f"),
+          ", one-sided permutation p = ",
+          format.pval(result$p_value, digits = 3, eps = 1e-3),
+          " (", result$occupied_cells, " occupied cells; ",
+          result$permutations, " permutations)"
+        )
+      }
+      if (identical(settings$plot_type, "dot")) {
+        fraction_result <- dot_fraction_autocorrelation()
+        fraction_text <- if (isTRUE(fraction_result$available)) {
+          format_moran(fraction_result, "Fraction-expressing")
+        } else {
+          fraction_result$reason
+        }
+        return(paste0(
+          "Matrix autocorrelation: ",
+          format_moran(r, "Expression"),
+          "; ",
+          fraction_text,
+          "."
+        ))
+      }
+      metric_description <- if (
+        identical(settings$trajectory_measure, "fraction")
+      ) {
+        "Fraction-expressing"
+      } else {
+        "Expression"
+      }
+      return(paste0(
+        "Evidence of ", tolower(metric_description),
+        " autocorrelation across the current matrix arrangement: ",
+        format_moran(r, metric_description),
+        "."
+      ))
     }
     if (identical(settings$plot_type, "violin")) {
       r <- violin_statistics()
@@ -3234,7 +3385,8 @@ server <- function(input, output, session) {
     comparison_values <- comparison |>
       transmute(
         sample_id = as.character(sample_id),
-        comparison_CPM = as.numeric(CPM)
+        comparison_CPM = as.numeric(CPM),
+        comparison_fraction_expressing = as.numeric(fraction_expressing)
       )
     
     data <- primary |>
@@ -3244,10 +3396,29 @@ server <- function(input, output, session) {
       data <- data |>
         filter(CPM > 0, comparison_CPM > 0)
     }
+    use_fraction_measure <- identical(
+      settings$trajectory_measure,
+      "fraction"
+    )
+    if (use_fraction_measure) {
+      validate(need(
+        any(is.finite(data$fraction_expressing)) &&
+          any(is.finite(data$comparison_fraction_expressing)),
+        "Fraction-expressing data are unavailable for one or both genes."
+      ))
+    }
     data <- data |>
       mutate(
-        primary_expression = log1p(CPM),
-        comparison_expression = log1p(comparison_CPM)
+        primary_expression = if (use_fraction_measure) {
+          fraction_expressing
+        } else {
+          log1p(CPM)
+        },
+        comparison_expression = if (use_fraction_measure) {
+          comparison_fraction_expressing
+        } else {
+          log1p(comparison_CPM)
+        }
       ) |>
       filter(
         is.finite(primary_expression),
@@ -3266,16 +3437,24 @@ server <- function(input, output, session) {
       )
     )
     
-    test <- stats::cor.test(
+    correlation_method <- if (use_fraction_measure) {
+      "spearman"
+    } else {
+      "pearson"
+    }
+    test <- suppressWarnings(stats::cor.test(
       data$primary_expression,
       data$comparison_expression,
-      method = "pearson"
-    )
+      method = correlation_method,
+      exact = if (use_fraction_measure) FALSE else NULL
+    ))
     
     list(
       data = data,
       estimate = unname(test$estimate),
-      p_value = test$p.value
+      p_value = test$p.value,
+      method = correlation_method,
+      use_fraction_measure = use_fraction_measure
     )
   })
   
@@ -3283,7 +3462,16 @@ server <- function(input, output, session) {
     settings <- plot_settings()
     data <- filtered_data()
     
-    y_label <- if (settings$log_scale) "ln(CPM + 1)" else "Counts per million"
+    y_label <- if (
+      settings$plot_type %in% c("trajectory", "heatmap", "violin") &&
+      identical(settings$trajectory_measure, "fraction")
+    ) {
+      "Fraction of cells expressing"
+    } else if (settings$log_scale) {
+      "ln(CPM + 1)"
+    } else {
+      "Counts per million"
+    }
     
     automatic_limits <- range(
       data$plotted_expression,
@@ -3328,6 +3516,9 @@ server <- function(input, output, session) {
         finite = TRUE
       )
       observed_limits[[1]] <- min(0, observed_limits[[1]])
+      if (isTRUE(analysis$use_fraction_measure)) {
+        observed_limits <- c(0, 1)
+      }
       correlation_limits <- if (settings$correlation_automatic_limits) {
         observed_limits
       } else {
@@ -3341,6 +3532,18 @@ server <- function(input, output, session) {
           all(is.finite(correlation_limits)) &&
           correlation_limits[[1]] < correlation_limits[[2]],
         "The correlation-axis minimum must be smaller than the maximum."
+      ))
+      
+      correlation_size_limits <- c(
+        suppressWarnings(as.numeric(settings$correlation_size_minimum)),
+        suppressWarnings(as.numeric(settings$correlation_size_maximum))
+      )
+      validate(need(
+        length(correlation_size_limits) == 2 &&
+          all(is.finite(correlation_size_limits)) &&
+          correlation_size_limits[[1]] >= 0 &&
+          correlation_size_limits[[1]] < correlation_size_limits[[2]],
+        "Min. dot size must be nonnegative and smaller than Max. dot size."
       ))
       
       point_mapping <- aes(
@@ -3372,8 +3575,16 @@ server <- function(input, output, session) {
           clip = "on"
         ) +
         labs(
-          x = paste0("ln(", loaded_gene(), " CPM + 1)"),
-          y = paste0("ln(", loaded_comparison_gene(), " CPM + 1)"),
+          x = if (isTRUE(analysis$use_fraction_measure)) {
+            paste0(loaded_gene(), " fraction expressing")
+          } else {
+            paste0("ln(", loaded_gene(), " CPM + 1)")
+          },
+          y = if (isTRUE(analysis$use_fraction_measure)) {
+            paste0(loaded_comparison_gene(), " fraction expressing")
+          } else {
+            paste0("ln(", loaded_comparison_gene(), " CPM + 1)")
+          },
           color = if (color_enabled) color_field else NULL,
           size = if (use_cell_size) "log10(number of cells)" else NULL
         ) +
@@ -3421,7 +3632,9 @@ server <- function(input, output, session) {
         )
       }
       if (use_cell_size) {
-        plot <- plot + scale_size_continuous(range = c(1.5, 7))
+        plot <- plot + scale_size_continuous(
+          range = correlation_size_limits
+        )
       } else {
         plot <- plot + guides(size = "none")
       }
@@ -3798,7 +4011,11 @@ server <- function(input, output, session) {
         loaded_gene(),
         " and ",
         loaded_comparison_gene(),
-        ": Pearson R = ",
+        if (isTRUE(analysis$use_fraction_measure)) {
+          ": fraction-expressing Spearman rho = "
+        } else {
+          ": Pearson R = "
+        },
         formatC(analysis$estimate, digits = 3, format = "f"),
         ", p-value = ",
         format.pval(analysis$p_value, digits = 3, eps = 1e-300),
@@ -3817,7 +4034,11 @@ server <- function(input, output, session) {
       }
       paste0(
         loaded_gene(),
-        " across ",
+        if (identical(settings$trajectory_measure, "fraction")) {
+          " fraction expressing across "
+        } else {
+          " across "
+        },
         settings$progression_variable,
         facet_note,
         color_note,
@@ -3826,7 +4047,14 @@ server <- function(input, output, session) {
     } else {
       paste0(
         loaded_gene(),
-        " expression by ",
+        if (
+          settings$plot_type %in% c("heatmap", "violin") &&
+          identical(settings$trajectory_measure, "fraction")
+        ) {
+          " fraction expressing by "
+        } else {
+          " expression by "
+        },
         settings$x_variable,
         " and ",
         settings$second_dimension,
