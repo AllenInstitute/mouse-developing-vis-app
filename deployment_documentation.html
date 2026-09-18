@@ -49,6 +49,12 @@
     th, td { border: 1px solid #d0d7de; padding: 8px 10px; text-align: left; vertical-align: top; }
     th { background: #eef2f5; color: #003057; }
     .small { font-size: .88rem; color: #59636e; }
+    .protocol-step { border-left: 4px solid #003057; padding: 2px 0 2px 16px; margin: 20px 0; }
+    .protocol-step h4 { margin-top: 8px; }
+    .path { font-family: "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+    .command-note { font-size: .88rem; color: #59636e; margin-top: -10px; }
+    .verify { border-left: 4px solid #4B9B58; background: #f3faf5; padding: 10px 14px; margin: 12px 0; }
+    kbd { background: #263238; color: white; padding: 2px 5px; border-radius: 3px; font-size: .82em; }
     @media (max-width: 900px) { body { display: block; } .sidebar { position: relative; width: 100%; height: auto; } .main-content { height: auto; padding: 20px; } }
   </style>
 </head>
@@ -65,6 +71,7 @@
       <li class="sidebar-h3"><a href="#clone-capsule">Clone into Code Ocean</a></li>
       <li class="sidebar-h3"><a href="#environment">Configure environment</a></li>
       <li class="sidebar-h3"><a href="#paths">Use /data and /results</a></li>
+      <li class="sidebar-h3"><a href="#preflight">Preflight checklist</a></li>
       <li class="sidebar-h2"><a href="#section-2">2. Convert and format back-end files</a></li>
       <li class="sidebar-h3"><a href="#pseudobulk-script">Create pseudobulk H5AD</a></li>
       <li class="sidebar-h3"><a href="#capture-h5ad">Capture H5AD Data Asset</a></li>
@@ -72,12 +79,15 @@
       <li class="sidebar-h3"><a href="#statistics-script">Create statistics table</a></li>
       <li class="sidebar-h3"><a href="#valuesets-script">Create value sets</a></li>
       <li class="sidebar-h3"><a href="#validate-backend">Validate outputs</a></li>
+      <li class="sidebar-h3"><a href="#backend-capture">Capture final back end</a></li>
       <li class="sidebar-h2"><a href="#section-3">3. Publish back-end files to AWS</a></li>
       <li class="sidebar-h3"><a href="#aws-cli">Configure AWS CLI</a></li>
       <li class="sidebar-h3"><a href="#aws-upload">Upload and verify</a></li>
       <li class="sidebar-h2"><a href="#section-4">4. Build and test the Shiny app</a></li>
       <li class="sidebar-h3"><a href="#app-files">Application files</a></li>
       <li class="sidebar-h3"><a href="#app-data">How the app reads data</a></li>
+      <li class="sidebar-h3"><a href="#abc-linkout">ABC Atlas gene links</a></li>
+      <li class="sidebar-h3"><a href="#bookmarks">Bookmarking architecture</a></li>
       <li class="sidebar-h3"><a href="#renv">Create renv.lock</a></li>
       <li class="sidebar-h3"><a href="#local-test">Test locally</a></li>
       <li class="sidebar-h3"><a href="#code-ocean-test">Test in Code Ocean</a></li>
@@ -144,13 +154,16 @@
 │   ├── run
 │   └── shiny/
 │       ├── app.R
+│       ├── abc_atlas_gene_url_function.R
+│       ├── abc_atlas_schema_kiwi.txt
 │       ├── table_column_definitions.csv
 │       ├── renv.lock
 │       ├── .Rprofile
 │       ├── .rscignore
 │       └── www/
 │           ├── Developing_Mouse_Visual_Cortex_logo.png
-│           └── allen_institute_logo.svg
+│           ├── allen_institute_logo.svg
+│           └── tokens.csv
 ├── data/
 │   └── .gitkeep
 ├── index.html
@@ -203,10 +216,18 @@ venv/</code></pre>
       <li>Add GitHub credentials to the Code Ocean account. For a private organizational repository, ensure that the GitHub credential is authorized for the organization.</li>
       <li>In Code Ocean, choose <strong>New Capsule → Clone from Git</strong>.</li>
       <li>Enter the HTTPS GitHub repository URL.</li>
-      <li>Name the Capsule <strong>Mouse Aging App</strong>.</li>
+      <li>Name the Capsule <strong>Developing Mouse Visual Cortex Gene Expression Viewer</strong>.</li>
       <li>Use <strong>Clone from Git</strong>, not <strong>Copy from Git</strong>, so the Capsule retains its repository connection.</li>
     </ol>
-    <p>Code Ocean maps the repository's <code>code/</code> and <code>data/</code> directories into the Capsule's corresponding sections.</p>
+    <p>Code Ocean maps the repository's <code>code/</code> and <code>data/</code> directories into the Capsule's corresponding sections. After cloning, open a terminal and verify the remote and branch:</p>
+    <pre><code>cd /root/capsule
+git remote -v
+git branch --show-current
+git status</code></pre>
+    <p>If the repository is renamed, update the remote explicitly rather than relying on a redirect:</p>
+    <pre><code>git remote set-url origin https://github.com/AllenInstitute/mouse-developing-vis-app.git
+git fetch origin
+git push --dry-run origin main</code></pre>
 
     <h3 id="environment">Configure the Python + R environment</h3>
     <p>Select a current Python + R starter environment. The validated workflow used Python 3.12 and R 4.3.3. Add dependencies through the Environment Editor, rebuild, commit the environment, and launch a fresh workstation after changes.</p>
@@ -239,7 +260,18 @@ curl</code></pre>
 libcurl
 openssl
 libstdcxx-ng&gt;=13
-libgcc-ng&gt;=13</code></pre>
+libgcc-ng&gt;=13
+nodejs
+awscli</code></pre>
+    <h4>Node package and environment variable</h4>
+    <p>The gene-specific ABC Atlas link uses the Node package <code>kiwi-schema</code>. This is an npm package, not a CRAN, Bioconductor, or pip package. In the Code Ocean Environment Editor, add the following post-install command:</p>
+    <pre><code>npm install --global kiwi-schema@0.5.0</code></pre>
+    <p>Add this environment variable so Node can resolve globally installed modules:</p>
+    <pre><code>NODE_PATH=/opt/conda/lib/node_modules</code></pre>
+    <p>After rebuilding the environment, confirm all three commands succeed:</p>
+    <pre><code>node --version
+npm --version
+node -e "console.log(require.resolve('kiwi-schema'))"</code></pre>
     <div class="warning">
       <strong>Compiled-library consistency:</strong> Install R Arrow and its C++ runtime through Conda/Mamba. Use the compatible <code>ggplot2 3.5.2</code> stack for R 4.3.3. Install the R <code>curl</code> package against the current Conda <code>libcurl</code> and OpenSSL environment. Do not create compatibility symlinks between incompatible OpenSSL or C++ runtime versions.
     </div>
@@ -264,7 +296,17 @@ Rscript -e 'library(arrow); library(ggplot2); library(curl); print(arrow::arrow_
         <tr><td><code>/results</code></td><td>Generated outputs from each processing stage.</td><td>Capture important outputs as Data Assets.</td></tr>
       </tbody>
     </table>
-    <p>Use <code>/results</code> for durable run outputs. After validating an output, capture it as a Code Ocean Data Asset and mount that asset under <code>/data</code> for the next processing stage.</p>
+    <p>Use <code>/results</code> for generated run outputs. Before closing a workstation, capture important files as Code Ocean Data Assets and mount those assets under <code>/data</code> for later stages. A captured Data Asset persists independently of the workstation.</p>
+    <h3 id="preflight">Preflight checklist</h3>
+    <ul class="checklist">
+      <li>The Git remote points to <code>AllenInstitute/mouse-developing-vis-app</code>.</li>
+      <li><code>code/run</code> has LF line endings and is executable.</li>
+      <li>Python can import <code>abc_atlas_access</code>, <code>anndata</code>, <code>scipy</code>, and <code>pyarrow</code>.</li>
+      <li>R can load <code>arrow</code>, <code>shiny</code>, <code>ggplot2</code>, and <code>curl</code>.</li>
+      <li>Node can resolve <code>kiwi-schema</code>.</li>
+      <li><code>aws sts get-caller-identity</code> succeeds in the workstation used for upload.</li>
+      <li>The current app-only support files are present: <code>table_column_definitions.csv</code>, <code>abc_atlas_gene_url_function.R</code>, <code>abc_atlas_schema_kiwi.txt</code>, and <code>www/tokens.csv</code>.</li>
+    </ul>
 
     <br><hr>
     <h2 id="section-2"><span class="step">2</span>Convert and Format Back-end Files</h2>
@@ -272,7 +314,8 @@ Rscript -e 'library(arrow); library(ggplot2); library(curl); print(arrow::arrow_
     <h3 id="pseudobulk-script">Run create_dev_mouse_vis_cortex_pseudobulk.py</h3>
     <div class="file-card">
       <h4><code>code/create_dev_mouse_vis_cortex_pseudobulk.py</code></h4>
-      <p>Downloads the public Developing Mouse Visual Cortex data through <code>AbcProjectCache</code>, reads the raw count matrix in backed mode, and aggregates cells in chunks. The output has one row per <code>library_label × cluster_alias</code>, one column per gene, summed raw counts in <code>X</code>, library/donor/taxonomy metadata in <code>obs</code>, and <code>number_of_cells</code> for each pseudobulk observation.</p>
+      <p>Downloads the public Developing Mouse Visual Cortex data through <code>AbcProjectCache</code>, reads the raw count matrix in backed mode, and aggregates cells in chunks. The output has one row per <code>library_label × cluster_alias</code>, one column per gene, summed raw counts in <code>X</code>, sparse detection counts in <code>layers["number_of_cells_expressing"]</code>, library/donor/taxonomy metadata in <code>obs</code>, and <code>number_of_cells</code> for each pseudobulk observation.</p>
+      <p>For every chunk, the aggregation computes both <code>group_matrix @ count_chunk</code> and <code>group_matrix @ (count_chunk &gt; 0)</code>. The second result is stored as unsigned integer counts and is the numerator for fraction expressing.</p>
     </div>
     <p>Use this run script:</p>
     <pre><code>#!/usr/bin/env bash
@@ -296,18 +339,36 @@ print(adata.obs.columns.tolist())
 assert "library_label" in adata.obs.columns
 assert "cluster_alias" in adata.obs.columns
 assert "number_of_cells" in adata.obs.columns
+assert "number_of_cells_expressing" in adata.layers
+assert adata.layers["number_of_cells_expressing"].shape == adata.shape
 assert adata.obs["number_of_cells"].min() &gt; 0
 adata.file.close()
-print("Pseudobulk validation succeeded")
+print("Pseudobulk structure validation succeeded")
 PY</code></pre>
 
+    <p>Validate that all detection counts are between zero and the total number of contributing cells:</p>
+    <pre><code>python - &lt;&lt;'PY'
+import anndata as ad
+import numpy as np
+from scipy import sparse
+
+path = "/results/Developing_Mouse_Visual_Cortex_library_cluster_pseudobulk.h5ad"
+adata = ad.read_h5ad(path, backed="r")
+detected = sparse.coo_matrix(adata.layers["number_of_cells_expressing"])
+number_of_cells = adata.obs["number_of_cells"].to_numpy()
+assert np.all(detected.data &gt;= 0)
+assert np.all(detected.data &lt;= number_of_cells[detected.row])
+adata.file.close()
+print("Detection-count validation passed")
+PY</code></pre>
     <h3 id="capture-h5ad">Capture and mount the pseudobulk H5AD</h3>
     <ol>
-      <li>In the Cloud Workstation, create a new Data Asset from <code>/root/capsule/results</code> or the workstation path that corresponds to <code>/results</code>.</li>
-      <li>Name it <strong>Developing Mouse Visual Cortex Pseudobulk</strong>.</li>
-      <li>Record <code>/code/run</code> as the originating script when provenance options are available.</li>
-      <li>Attach the resulting Data Asset to the Capsule with mount name <code>mouse_vis_cortex_pseudobulk</code>.</li>
-      <li>Confirm the file is available at the expected path.</li>
+      <li>Verify the H5AD exists in the workstation results directory: <code>ls -lh /root/capsule/results</code>. If the workstation exposes the output only at <code>/results</code>, use <code>readlink -f /results</code> to identify the corresponding location.</li>
+      <li>From the active Cloud Workstation interface, use the available results-capture control to create a Data Asset from <code>/root/capsule/results</code>. If that control is unavailable, generate a reproducible run and create the Data Asset from the result in the Capsule Timeline.</li>
+      <li>Name it <strong>Developing Mouse Visual Cortex Pseudobulk with Detection Counts</strong> and describe <code>X</code>, <code>number_of_cells_expressing</code>, the grouping variables, and the originating script.</li>
+      <li>Open the created Data Asset and verify that the H5AD is present before stopping the workstation.</li>
+      <li>On the Capsule page, use the data-asset management panel to attach the asset. Use mount name <code>mouse_vis_cortex_pseudobulk</code>.</li>
+      <li>Resume a fresh workstation and locate the mounted file with <code>find /data -maxdepth 3 -type f -name "*.h5ad" -print</code>.</li>
     </ol>
     <pre><code>find /data -type f -name "*.h5ad" -print</code></pre>
     <p>After the Data Asset has been validated, the temporary ABC Atlas cache can be removed:</p>
@@ -316,7 +377,7 @@ PY</code></pre>
     <h3 id="parquet-script">Run create_mouse_aging_parquet.py</h3>
     <div class="file-card">
       <h4><code>code/create_mouse_aging_parquet.py</code></h4>
-      <p>Reads the mounted pseudobulk H5AD and writes the app-ready gene-level Parquet resource plus metadata. The script does not create the statistics table; statistics are deliberately generated in the next independent step.</p>
+      <p>Reads the mounted pseudobulk H5AD and writes the app-ready gene-level Parquet resource plus metadata. Each gene file contains <code>sample_id</code>, <code>summed_counts</code>, and unsigned-integer <code>number_of_cells_expressing</code>. The script validates the detection layer against <code>number_of_cells</code> and performs a Parquet read-back check. It does not create the statistics table; statistics are deliberately generated in the next independent step.</p>
     </div>
     <p>Run:</p>
     <pre><code>python /code/create_mouse_aging_parquet.py \
@@ -335,6 +396,7 @@ PY</code></pre>
 └── manifest.json</code></pre>
     <ul>
       <li>Each gene directory currently contains one Parquet file, but the app reads the directory as a dataset so additional files are supported.</li>
+      <li>Every new gene file must contain <code>sample_id</code>, <code>summed_counts</code>, and <code>number_of_cells_expressing</code>.</li>
       <li><code>obs_metadata.parquet</code> contains the full pseudobulk metadata and unique <code>sample_id</code>.</li>
       <li><code>gene_map.parquet</code> maps user-facing gene symbols to filesystem-safe gene keys.</li>
       <li><code>CPM_scaling.csv</code> contains <code>library_label</code> and <code>CPM_scaling_factor</code> in the same row order as every gene file and metadata table.</li>
@@ -353,22 +415,30 @@ PY</code></pre>
     <pre><code>mkdir -p /results/mouse_vis_cortex_parquet/statistics
 cp /results/mouse_gene_summary_statistics.csv \
   /results/mouse_vis_cortex_parquet/statistics/mouse_gene_summary_statistics.csv</code></pre>
-    <p>The final columns are:</p>
+    <p>The current table retains expression summaries and replaces the former <code>(&gt;0)</code> pseudobulk metrics with true cell-detection summaries:</p>
     <pre><code>gene_symbol
 ln(mean_CPM+1)
 age_log2fc
-age_log2fc(&gt;0)
+frac_expr
+age_frac_diff
 max_ROI
 log2fc_ROI
-log2fc_ROI(&gt;0)
+max_frac_ROI
+frac_diff_ROI
 max_subclass
 log2fc_subclass
-log2fc_subclass(&gt;0)</code></pre>
+max_frac_subclass
+frac_diff_subclass
+gene_type</code></pre>
     <ul>
-      <li><code>age_log2fc</code> compares mean CPM among P40-or-older observations with mean CPM among all embryonic observations.</li>
-      <li>The <code>(&gt;0)</code> variants calculate group means after excluding zero values.</li>
-      <li>ROI and subclass log2 fold changes compare the maximum group mean with the arithmetic mean of group means.</li>
+      <li><code>age_log2fc</code> compares mean CPM among the script-defined postnatal reference group with mean CPM among embryonic observations.</li>
+      <li><code>frac_expr</code> is the overall weighted fraction expressing: summed expressing-cell counts divided by summed total-cell counts.</li>
+      <li><code>age_frac_diff</code> is the postnatal-minus-embryonic percentage-point difference in fraction expressing.</li>
+      <li><code>max_frac_ROI</code> and <code>max_frac_subclass</code> identify the ROI and subclass with the highest weighted fraction expressing.</li>
+      <li><code>frac_diff_ROI</code> and <code>frac_diff_subclass</code> summarize the corresponding difference in fraction expressing.</li>
+      <li><code>gene_type</code> supports exact category filtering in the statistics table.</li>
     </ul>
+    <p>Keep the six short names synchronized between <code>create_statistics.py</code> and <code>table_column_definitions.csv</code> so the table tooltips remain accurate.</p>
 
     <h3 id="valuesets-script">Run create_value_sets.py</h3>
     <div class="file-card">
@@ -412,9 +482,23 @@ metadata = pq.read_table(required[0]).to_pandas()
 scaling = pd.read_csv(required[2])
 assert len(metadata) == len(scaling)
 assert metadata["library_label"].astype(str).tolist() == scaling["library_label"].astype(str).tolist()
+gene_map = pq.read_table(required[1]).to_pandas()
+assert metadata["sample_id"].is_unique
+assert gene_map["gene_symbol"].is_unique
+example = next((root / "counts_by_gene").glob("gene=*/data.parquet"))
+columns = pq.read_schema(example).names
+assert {"sample_id", "summed_counts", "number_of_cells_expressing"}.issubset(columns)
+stats = pd.read_csv(required[4])
+assert {"gene_symbol", "frac_expr", "age_frac_diff", "gene_type"}.issubset(stats.columns)
 print("Back-end validation succeeded")
 PY</code></pre>
-    <p>Capture <code>/results/mouse_vis_cortex_parquet</code> as another Code Ocean Data Asset for provenance and internal reuse before publishing to AWS.</p>
+    <h3 id="backend-capture">Capture the complete app-ready back end</h3>
+    <ol>
+      <li>Confirm the complete output is under <code>/results/mouse_vis_cortex_parquet</code>.</li>
+      <li>Capture that directory as a second Code Ocean Data Asset for provenance and internal reuse.</li>
+      <li>Open the asset and verify the <code>counts_by_gene</code>, <code>metadata</code>, and <code>statistics</code> directories.</li>
+      <li>Attach it to any downstream Capsule that needs to inspect or republish the app-ready files.</li>
+    </ol>
 
     <br><hr>
     <h2 id="section-3"><span class="step">3</span>Publish Back-end Files to AWS</h2>
@@ -450,7 +534,7 @@ aws sts get-caller-identity</code></pre>
   --progress-frequency 5</code></pre>
     <div class="warning"><strong>Do not add <code>--delete</code> to the real upload.</strong> Use it only with <code>--dryrun</code> for parity diagnostics.</div>
     <p>Compare paths and sizes without changing AWS:</p>
-    <pre><code>LOCAL="/data/mouse_vis_cortex_parquet"
+    <pre><code>LOCAL="/results/mouse_vis_cortex_parquet"
 S3="s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse"
 
 aws s3 sync \
@@ -470,6 +554,21 @@ aws s3 ls "${S3}/" --recursive --summarize --region us-west-2 | tail -2</code></
   "${S3}/" \
   --no-sign-request \
   --region us-west-2</code></pre>
+    <p>To overwrite the complete regenerated gene collection in its existing location while retaining unrelated remote objects:</p>
+    <pre><code>LOCAL="/results/mouse_vis_cortex_parquet/counts_by_gene"
+S3="s3://sea-ad-single-cell-profiling/Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/counts_by_gene"
+aws s3 sync "${LOCAL}/" "${S3}/" --region us-west-2 --dryrun
+aws s3 sync "${LOCAL}/" "${S3}/" --region us-west-2 --only-show-errors</code></pre>
+    <p>Do not use <code>--delete</code> for this production synchronization unless removal of remote-only files is explicitly intended.</p>
+    <p>Confirm that a representative public gene file contains the detection column:</p>
+    <pre><code>aws s3 cp   "${S3}/gene=Reln/data.parquet"   /tmp/Reln_data.parquet   --no-sign-request   --region us-west-2
+python - &lt;&lt;'PY'
+import pyarrow.parquet as pq
+path = "/tmp/Reln_data.parquet"
+table = pq.read_table(path)
+assert "number_of_cells_expressing" in table.column_names
+print(table.schema)
+PY</code></pre>
     <p>To replace only the statistics table after recalculation:</p>
     <pre><code>aws s3 cp \
   "/results/mouse_gene_summary_statistics.csv" \
@@ -485,12 +584,16 @@ aws s3 ls "${S3}/" --recursive --summarize --region us-west-2 | tail -2</code></
       <p>The complete R Shiny application. It loads lightweight metadata and statistics at startup, lazily retrieves selected gene directories from public S3, calculates CPM, caches retrieved genes, supports stacked categorical and numeric filters, and provides trajectory, heatmap, dot, violin, and two-gene correlation plots. Plot views include exploratory Spearman, Moran's I, Kruskal-Wallis, or Pearson statistics as appropriate.</p>
     </div>
     <div class="file-card">
+      <h4><code>code/shiny/abc_atlas_gene_url_function.R</code> and <code>abc_atlas_schema_kiwi.txt</code></h4>
+      <p>The R function uses Node and <code>kiwi-schema</code> to replace the default <code>Reln</code> gene in a known working ABC Atlas state and return an otherwise equivalent gene-specific URL. <code>app.R</code> sources the function and rebuilds the sidebar link whenever a newly retrieved gene becomes <code>loaded_gene()</code>.</p>
+    </div>
+    <div class="file-card">
       <h4><code>code/shiny/table_column_definitions.csv</code></h4>
       <p>Provides local statistics-table header definitions using the required columns <code>column_names</code> and <code>column_definitions</code>. Keep this file beside <code>app.R</code> and include it in every deployment bundle.</p>
     </div>
     <div class="file-card">
       <h4><code>code/shiny/www/</code></h4>
-      <p>Static logos and other browser assets. The current app requires <code>Developing_Mouse_Visual_Cortex_logo.png</code> and <code>allen_institute_logo.svg</code>.</p>
+      <p>Static logos and browser assets. The current app requires <code>Developing_Mouse_Visual_Cortex_logo.png</code> and <code>allen_institute_logo.svg</code>. If <code>tokens.csv</code> exists with columns <code>token</code>, <code>type</code>, and <code>name</code>, the app displays an alphabetical searchable glossary; absent or invalid token files disable the glossary without stopping the app.</p>
     </div>
     <div class="file-card">
       <h4><code>code/shiny/renv.lock</code></h4>
@@ -534,7 +637,32 @@ s3_anonymous &lt;- TRUE</code></pre>
     </ul>
     <p>For a selected gene, it opens the entire directory:</p>
     <pre><code>counts_by_gene/gene=&lt;gene_key&gt;/</code></pre>
-    <p>This permits one or multiple Parquet files per gene while avoiding discovery of the complete gene collection.</p>
+    <p>This permits one or multiple Parquet files per gene while avoiding discovery of the complete gene collection. The reader joins by <code>sample_id</code>, calculates <code>CPM = summed_counts × CPM_scaling_factor</code>, validates detection counts against <code>number_of_cells</code>, and calculates <code>fraction_expressing</code>. Retrieved genes are cached in memory.</p>
+    <p>The app derives <code>stage</code> at startup: donor ages beginning with <code>E</code> are labeled <code>embryonic</code>, and ages beginning with <code>P</code> are labeled <code>postnatal</code>. This app-only metadata field is then available for filtering, faceting, axes, and colors.</p>
+    <h3 id="abc-linkout">Configure and test gene-specific ABC Atlas links</h3>
+    <ol>
+      <li>Place <code>abc_atlas_gene_url_function.R</code> and <code>abc_atlas_schema_kiwi.txt</code> beside <code>app.R</code>.</li>
+      <li>Confirm <code>app.R</code> contains <code>source("abc_atlas_gene_url_function.R")</code>.</li>
+      <li>Confirm Node and <code>kiwi-schema</code> are available in every runtime environment, including Posit Connect.</li>
+      <li>Test the function directly from <code>code/shiny</code>:</li>
+    </ol>
+    <pre><code>Rscript - &lt;&lt;'RS'
+source("abc_atlas_gene_url_function.R")
+url &lt;- create_abc_atlas_gene_url(desired_gene = "Sst")
+stopifnot(grepl("^https://knowledge.brain-map.org/abcatlas#", url))
+cat(url, "
+")
+RS</code></pre>
+    <p>In the app, <strong>Plot in ABC Atlas</strong> is rendered only after gene data are available. The URL is regenerated from the current <code>loaded_gene()</code> after each successful <strong>Get gene data</strong> action.</p>
+    <h3 id="bookmarks">Preserve compact URL bookmarks</h3>
+    <p>The app uses URL bookmarking but excludes ordinary Shiny and DataTable inputs dynamically. Only the compact custom <code>viewer_state</code> is saved. This prevents oversized URLs such as those caused by <code>gene_statistics_table_rows_all</code>.</p>
+    <ul>
+      <li>Keep <code>observe({ setBookmarkExclude(names(input)) }, priority = 1000)</code>.</li>
+      <li>Save the primary gene, optional comparison gene, dynamic filter field-to-value mapping, metric, plot type, axes, facets, colors, limits, pagination, and display settings in <code>state$values$viewer_state</code>.</li>
+      <li>During restoration, retain saved dynamic-filter values until the browser-created filter inputs exist and report the expected selections.</li>
+      <li>Trigger plotting only after the gene data and all dynamic filters are ready.</li>
+      <li>Capture plot settings in a <code>reactiveVal()</code> before selecting the plot tab; do not rely on lazy <code>eventReactive()</code> evaluation.</li>
+    </ul>
 
     <h3 id="renv">Create and validate renv.lock</h3>
     <p>Generate the lockfile from a clean, known-working local R environment. Use R 4.3.3 and public repositories. Include the application packages plus <code>rsconnect</code because the GitHub workflow uses it to generate the deployment manifest.</p>
@@ -575,7 +703,7 @@ renv::snapshot(
 )
 
 renv::status()</code></pre>
-    <p>Verify that the direct package versions in the lockfile equal the working library and that the lockfile does not contain <code>codeocean.internal</code>. The validated plotting stack uses <code>ggplot2 3.5.2</code>.</p>
+    <p>Verify that direct package versions in the lockfile equal the working library and that the lockfile does not contain <code>codeocean.internal</code>. The validated plotting stack uses <code>ggplot2 3.5.2</code>. Node.js and <code>kiwi-schema</code> are not recorded in <code>renv.lock</code>; record them separately in the Code Ocean environment and ensure the Posit Connect runtime also provides them.</p>
 
     <h3 id="local-test">Test locally</h3>
     <pre><code>setwd("code/shiny")
@@ -588,10 +716,18 @@ shiny::runApp(".")</code></pre>
       <li>Selecting a statistics row updates the gene selector.</li>
       <li>At least two genes can be retrieved.</li>
       <li>CPM equals <code>summed_counts × CPM_scaling_factor</code>.</li>
+      <li>Fraction expressing equals <code>number_of_cells_expressing / number_of_cells</code> for individual pseudobulks.</li>
+      <li>Dot area represents the weighted fraction expressing and missing combinations remain absent.</li>
       <li>Trajectory, heatmap, dot, violin, and two-gene correlation plots render.</li>
       <li>Stacked categorical and numeric filters work together, and categorical statistics-table filters update displayed rows.</li>
       <li>Manual expression limits, heatmap observation counts, and shared two-gene axis limits work as expected.</li>
-      <li>Trajectory Spearman, matrix Moran's I, violin Kruskal-Wallis, and two-gene Pearson statistics render for eligible plots.</li>
+      <li>Trajectory Spearman, matrix Moran's I, violin Kruskal-Wallis, expression-mode Pearson, and fraction-mode Spearman statistics render for eligible plots.</li>
+      <li>Dot-plot notes report both expression and fraction-expressing Moran's I.</li>
+      <li>Trajectory and violin pagination, facet height, facets per row, and vertical scrolling work without a regeneration loop.</li>
+      <li>Resizing replays the current plot because <code>execOnResize = FALSE</code>.</li>
+      <li>A bookmarked view restores genes, dynamic filters, values, plot settings, and the plot.</li>
+      <li>The ABC Atlas link updates after every successful gene retrieval and opens the current gene.</li>
+      <li>The glossary appears only when a valid <code>www/tokens.csv</code> is present.</li>
       <li>Age order, taxonomy order, colors, facets, and legends follow <code>value_sets.csv</code>.</li>
       <li>Browser resizing does not generate invalid plot dimensions or scrollbars.</li>
       <li>Both logos and all external links work.</li>
@@ -633,6 +769,8 @@ Sys.setenv(
 
 app_files &lt;- c(
   "app.R",
+  "abc_atlas_gene_url_function.R",
+  "abc_atlas_schema_kiwi.txt",
   "table_column_definitions.csv",
   "renv.lock",
   list.files(
@@ -751,6 +889,8 @@ jobs:
 
           app_files &lt;- c(
             "app.R",
+            "abc_atlas_gene_url_function.R",
+            "abc_atlas_schema_kiwi.txt",
             "table_column_definitions.csv",
             "renv.lock",
             list.files(
@@ -786,11 +926,14 @@ jobs:
         shell: bash
         run: |
           test -f code/shiny/app.R
+          test -f code/shiny/abc_atlas_gene_url_function.R
+          test -f code/shiny/abc_atlas_schema_kiwi.txt
           test -f code/shiny/table_column_definitions.csv
           test -f code/shiny/renv.lock
           test -f code/shiny/manifest.json
           test -f code/shiny/www/allen_institute_logo.svg
           test -f code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png
+          test -f code/shiny/www/tokens.csv
 
       - name: Deploy to Posit Connect
         uses: posit-dev/connect-actions/deploy@main
@@ -897,6 +1040,14 @@ git push origin main</code></pre>
         <tr><td>Connect cannot resolve <code>codeocean.internal</code></td><td>The manifest captured Code Ocean's private package proxy.</td><td>Set public repositories before manifest generation and fail the workflow if the private URL appears.</td></tr>
         <tr><td><code>invalid 'width' or 'height'</code> in plotting</td><td>Plot output or parent containers report a transient invalid dimension.</td><td>Use one explicit responsive sizing model, allow containers to shrink with <code>min-height: 0</code>, and avoid competing height calculations.</td></tr>
         <tr><td>Windows shell script reports invalid <code>pipefail</code></td><td>CRLF line endings.</td><td>Convert <code>code/run</code> to LF and enforce line endings with <code>.gitattributes</code>.</td></tr>
+        <tr><td><code>414 Request-URI Too Large</code></td><td>Automatic bookmarking serialized DataTable and dynamic-input state, especially all table row indices.</td><td>Dynamically exclude all ordinary inputs and store only the compact custom <code>viewer_state</code>.</td></tr>
+        <tr><td><code>Operation not allowed without an active reactive context</code> during restoration</td><td>A reactive value was read outside a reactive consumer.</td><td>Wrap the read in <code>isolate()</code>, and keep dynamic filter restoration state until inputs confirm their values.</td></tr>
+        <tr><td>The first plot requires two clicks</td><td>Lazy <code>eventReactive()</code> evaluation races with plot-tab activation.</td><td>Capture settings into a <code>reactiveVal()</code> first, then select the plot tab in <code>session$onFlushed()</code>.</td></tr>
+        <tr><td>Plot continuously regenerates after resizing</td><td><code>execOnResize = TRUE</code> reruns the complete expression while reactive height and scrollbar geometry change.</td><td>Use <code>execOnResize = FALSE</code>; regenerate only after <strong>Generate plot</strong> or bookmark restoration.</td></tr>
+        <tr><td>LOESS warnings about singularities or failed groups</td><td>Some color/facet groups have too few distinct progression values for stable LOESS fitting.</td><td>These warnings concern smoothing groups; use a linear fit or no fit for sparse configurations, and first ensure resize-triggered redraw loops are disabled.</td></tr>
+        <tr><td>Facet page errors such as missing TRUE/FALSE or argument length zero</td><td>The dynamically created page input is briefly <code>NULL</code>.</td><td>Default missing page size to 12 and missing or invalid page number to 1 before any <code>if</code> condition.</td></tr>
+        <tr><td>The ABC Atlas button keeps the first gene</td><td>The URL was calculated only for the first click or stored in a nonreactive browser handler.</td><td>Regenerate a reactive URL whenever <code>loaded_gene()</code> changes and render the link from that value.</td></tr>
+        <tr><td><code>kiwi-schema</code> cannot be found</td><td>Node cannot resolve the globally installed npm module.</td><td>Install <code>kiwi-schema</code> with npm and set <code>NODE_PATH=/opt/conda/lib/node_modules</code>.</td></tr>
       </tbody>
     </table>
 
@@ -914,7 +1065,7 @@ git push origin main</code></pre>
       <li><a href="https://github.com/AllenInstitute/mouse-developing-vis-app" target="_blank" rel="noopener noreferrer">mouse-developing-vis-app repository</a></li>
     </ul>
 
-    <div class="success"><strong>Rebuild criterion:</strong> A successful rebuild ends with a validated Code Ocean provenance chain, an anonymously readable public S3 back end, a locally and remotely tested Shiny application, a reproducible <code>renv.lock</code>, a working Posit Connect content item, and a GitHub Action that updates that content whenever <code>code/shiny/</code> changes.</div>
+    <div class="success"><strong>Rebuild criterion:</strong> A successful rebuild ends with validated summed-count and detection-count pseudobulk matrices, captured Code Ocean provenance assets, gene-level Parquet files with detection counts, current statistics and value sets, an anonymously readable public S3 back end, a locally and remotely tested Shiny application, working bookmarks and ABC Atlas links, a reproducible <code>renv.lock</code>, a working Posit Connect content item, and a GitHub Action that updates that content whenever <code>code/shiny/</code> changes.</div>
   </main>
 </body>
 </html>

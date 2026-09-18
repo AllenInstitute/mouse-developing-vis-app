@@ -8,6 +8,8 @@ export PATH="/opt/conda/bin:${PATH}"
 export LD_LIBRARY_PATH="/opt/conda/lib:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="/opt/conda/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
+npm install --global kiwi-schema@0.5.0
+
 Rscript -e 'install.packages(
   "curl",
   repos = "https://cloud.r-project.org",

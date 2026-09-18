@@ -1,10 +1,12 @@
-# hash:sha256:ee254895566590c9ec27ed3657a407757639bae6c2650c1d4541e25604e765b5
+# hash:sha256:f92761f3765d856c2dcc89c64e76f6579b1f0837696cdc5a4e670b993c1fb536
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/py-r:python3.12.4-R4.3.3-JupyterLab4.2.4-RStudiorstudio-server-2024.04.2-764-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
+
+ENV NODE_PATH=/opt/conda/lib/node_modules
 
 RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys \
         0xAD2323F17326AE31401037733E05EBFF05441C52 \
@@ -22,6 +24,7 @@ RUN conda install -y \
         libcurl==8.18.0 \
         libgcc-ng==16.1.0 \
         libstdcxx-ng==16.1.0 \
+        nodejs==25.2.1 \
         r-arrow==21.0.0 \
     && conda clean -ya
 

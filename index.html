@@ -91,7 +91,7 @@
       <img class="header-logo" src="code/shiny/www/allen_institute_logo.svg" alt="Allen Institute logo">
     </div></div>
 
-    <p>The <strong>Developing Mouse Visual Cortex Gene Expression Viewer</strong> is an interactive R Shiny application for exploring pseudobulk gene expression across developmental age, cell type, donor, library, and anatomical metadata. Users can identify candidate genes from a sortable statistics table, retrieve genes from public AWS storage, apply multiple simultaneous filters, and create trajectory, heatmap, dot, violin, or two-gene correlation plots.</p>
+    <p>The <strong>Developing Mouse Visual Cortex Gene Expression Viewer</strong> is an interactive R Shiny application for exploring pseudobulk gene expression and the fraction of cells expressing each gene across developmental age, developmental stage, cell type, donor, library, and anatomical metadata. Users can identify candidate genes from a sortable statistics table, retrieve genes from public AWS storage, apply multiple simultaneous filters, create trajectory, heatmap, dot, violin or boxplot, and two-gene correlation views, and share configured analyses through bookmarked URLs.</p>
     <p>The underlying resource is part of the <a href="https://brain-map.org/bkp/explore/abc-atlas" target="_blank" rel="noopener noreferrer">Allen Brain Cell Atlas</a>, an open-science platform for visualizing and analyzing multimodal single-cell data across the mammalian brain.</p>
     <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square"></i> Launch the interactive viewer</a><br>
     <a class="app-logo" href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer"><img src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex Gene Expression Viewer logo"></a>
@@ -99,7 +99,7 @@
     <div class="feature-grid">
       <div class="feature-card"><strong>Five plot types</strong><br>Trajectory, heatmap, dot, violin, and two-gene correlation views.</div>
       <div class="feature-card"><strong>Flexible filtering</strong><br>Stack any number of categorical and numeric metadata filters.</div>
-      <div class="feature-card"><strong>Built-in statistics</strong><br>Plot-specific exploratory tests accompany every visualization.</div>
+      <div class="feature-card"><strong>Built-in statistics</strong><br>Plot-specific tests follow the selected expression or fraction-expressing metric.</div>
       <div class="feature-card"><strong>Lazy cloud access</strong><br>Only requested gene partitions are read and cached.</div>
     </div>
 
@@ -111,19 +111,20 @@
     <p>Source documentation, notebooks, manifests, expression matrices, metadata, and taxonomy annotations are available through the <a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex dataset documentation</a> and the <a href="https://alleninstitute.github.io/abc_atlas_access/" target="_blank" rel="noopener noreferrer">ABC Atlas Access Python package</a>.</p>
 
     <h3 id="pseudobulk">Pseudobulk expression</h3>
-    <p>The app uses a pseudobulk AnnData source generated from the raw Developing Mouse Visual Cortex single-cell count matrix. Raw counts were summed separately for each combination of <code>library_label</code> and <code>cluster_alias</code>. Each row is a library-by-cluster observation, each column is a gene, and each value is the summed raw count across contributing cells.</p>
+    <p>The app uses a pseudobulk AnnData source generated from the raw Developing Mouse Visual Cortex single-cell count matrix. Raw counts were summed separately for each combination of <code>library_label</code> and <code>cluster_alias</code>. Each row is a library-by-cluster observation, each column is a gene, and each value in <code>X</code> is the summed raw count across contributing cells. A matching sparse <code>number_of_cells_expressing</code> layer records how many source cells have a raw count greater than zero for each gene and pseudobulk observation.</p>
     <ul>
-      <li><code>number_of_cells</code> records the number of cells contributing to each pseudobulk observation.</li>
-      <li>Observation metadata retain library, donor, developmental age, anatomy, and cell-taxonomy annotations.</li>
+      <li><code>number_of_cells</code> records the total number of cells contributing to each pseudobulk observation.</li>
+      <li><code>number_of_cells_expressing</code> provides the numerator used to calculate the fraction of cells expressing a selected gene.</li>
+      <li>Observation metadata retain library, donor, developmental age, anatomy, and cell-taxonomy annotations. The app also derives a categorical <code>stage</code> field, assigning embryonic ages to <code>embryonic</code> and postnatal ages to <code>postnatal</code>.</li>
       <li>Large source files and the intermediate ABC Atlas cache are not distributed through GitHub.</li>
     </ul>
 
     <h3 id="parquet">Gene-level Parquet files</h3>
-    <p>The pseudobulk source was converted into a gene-partitioned Parquet resource. Each gene is stored under <code>counts_by_gene/gene=&lt;gene_key&gt;/</code> with <code>sample_id</code> and <code>summed_counts</code>. The app opens only the selected partition and supports one or multiple Parquet files in that directory.</p>
+    <p>The pseudobulk source was converted into a gene-partitioned Parquet resource. Each gene is stored under <code>counts_by_gene/gene=&lt;gene_key&gt;/</code> with <code>sample_id</code>, <code>summed_counts</code>, and <code>number_of_cells_expressing</code>. The app opens only the selected partition and supports one or multiple Parquet files in that directory. If detection counts are unavailable in an older partition, expression views continue to work and the dot plot falls back to expression-based sizing.</p>
     <p>Expression is displayed as counts per million (CPM):</p>
     <pre><code>CPM scaling factor = 1,000,000 / total counts across all genes in the pseudobulk observation
 CPM for a selected gene = summed counts × CPM scaling factor</code></pre>
-    <p>Users may display CPM or <code>ln(CPM + 1)</code> and may exclude zero-count observations.</p>
+    <p>Users may display CPM or <code>ln(CPM + 1)</code>, calculate the fraction of cells expressing a gene as <code>number_of_cells_expressing / number_of_cells</code>, and exclude zero-count observations. For grouped dot-plot values, fractions are weighted correctly by summing expressing-cell counts and total-cell counts before division.</p>
 
     <h3 id="metadata">Metadata and value sets</h3>
     <ul>
@@ -132,6 +133,7 @@ CPM for a selected gene = summed counts × CPM scaling factor</code></pre>
       <li><code>CPM_scaling.csv</code> contains row-aligned CPM scaling factors.</li>
       <li><code>value_sets.csv</code> supplies authoritative label order and colors for categorical metadata.</li>
       <li><code>table_column_definitions.csv</code> supplies on-hover definitions for statistics-table headers.</li>
+      <li><code>www/tokens.csv</code>, when present with <code>token</code>, <code>type</code>, and <code>name</code> columns, supplies the searchable biological glossary in the sidebar.</li>
     </ul>
     <p>Values absent from <code>value_sets.csv</code> are retained and assigned distinct fallback colors.</p>
 
@@ -148,6 +150,7 @@ CPM for a selected gene = summed counts × CPM scaling factor</code></pre>
       <li>Type a gene symbol or select a gene from the statistics table.</li>
       <li>Select <strong>Get gene data</strong>.</li>
       <li>The app reads the selected partition, joins counts to metadata by <code>sample_id</code>, calculates CPM, and stores the result in an in-memory cache.</li>
+      <li>After selecting a gene, a button links to <strong>Plot in ABC Atlas</strong>.</li>
     </ol>
     <p>The selector starts empty, displays an example gene, and does not require deleting a prefilled value.</p>
 
@@ -158,75 +161,83 @@ CPM for a selected gene = summed counts × CPM scaling factor</code></pre>
       <li>Numeric fields use range sliders.</li>
       <li>Filters across fields are combined with AND.</li>
       <li><strong>Discard observations with zero counts</strong> removes observations with no counts for the selected gene.</li>
-      <li><strong>Plot ln(CPM + 1)</strong> switches between transformed and untransformed CPM.</li>
-      <li><strong>Use automatic expression limits</strong> can be disabled to enter manual minimum and maximum values. Values outside the selected range are squished to the bounds.</li>
+      <li><strong>Gene metric</strong> switches supported plots between gene expression and the fraction of cells expressing the gene.</li>
+      <li><strong>Plot ln(CPM + 1)</strong> switches between transformed and untransformed CPM when expression is selected.</li>
+      <li><strong>Use automatic expression limits</strong> can be disabled to enter manual minimum and maximum values. Values outside the selected range are squished to the bounds; fraction-expressing views use a 0-to-1 scale.</li>
     </ul>
 
     <h3 id="plot-controls">Plot controls</h3>
     <ul>
       <li><strong>Plot type</strong> selects one of five visualizations.</li>
-      <li>Plot-specific controls configure dimensions, facets, colors, trend lines, counts, and observation display.</li>
-      <li><strong>Generate plot</strong> applies the current settings and opens the plotting tab.</li>
+      <li>Plot-specific controls configure dimensions, facets, colors, trend lines, pagination, plot height, counts, and observation display. Hover over dropdown labels for concise control definitions.</li>
+      <li><strong>Generate plot</strong> captures the current settings, creates the plot, and opens the plotting tab.</li>
+      <li><strong>Share this view</strong> creates a URL bookmark containing the selected gene or genes, active filters, and plot configuration. Opening the link restores the state, retrieves the required gene data, and regenerates the plot.</li>
       <li><strong>Reset plot options</strong> restores defaults.</li>
+      <li>The optional alphabetical glossary below the plot controls supports exact lookup of abbreviations used in cell-type and anatomical labels.</li>
     </ul>
 
     <hr>
     <h2 id="app-tabs"><i class="fas fa-chart-bar"></i> Application tabs</h2>
     <h3 id="select-gene">Select gene of interest</h3>
-    <p>This tab contains a sortable table of gene-level exploratory statistics. Numeric fields retain numeric sorting and range filters. Gene symbols link to GeneCards, and hovering over a defined column header displays its description.</p>
-    <p>Every categorical statistics column except the leading gene-symbol column has a multi-value filter. Selections within one categorical column use OR; filters across columns use AND. Selecting a table row places the gene into the <strong>Gene symbol</strong> control.</p>
+    <p>This tab contains a sortable table of gene-level exploratory statistics, including expression magnitude, developmental change, regional and subclass specificity, fraction-expressing summaries, and gene type. Numeric fields retain numeric sorting and range filters. Gene symbols link to GeneCards, and hovering over a defined column header displays its description.</p>
+    <p>Exact-value multi-select filters are provided below the table for <code>gene_symbol</code>, <code>max_ROI</code>, <code>max_subclass</code>, and <code>gene_type</code>. Selections within one field use OR; filters across fields use AND. Gene-symbol filtering uses the underlying plain symbol rather than the displayed GeneCards link. Selecting a table row places the gene into the <strong>Gene symbol</strong> control.</p>
     <div class="note"><strong>Important:</strong> Summary-table statistics are exploratory aids and are not substitutes for the analyses in the source study.</div>
 
     <h3 id="plot-gene">Plot gene of interest</h3>
     <p>The plotting tab supports five visualization types with matching plot-specific statistical summaries.</p>
 
     <h4 id="trajectory">Trajectory across development</h4>
-    <p>The trajectory plot displays expression across an ordered progression variable. Developmental ages are biologically ordered; visual gaps are capped to compress large unsampled intervals while retaining endpoint padding.</p>
+    <p>The trajectory plot displays expression or fraction expressing across an ordered progression variable. Developmental ages are biologically ordered; visual gaps are capped to compress large unsampled intervals while retaining endpoint padding.</p>
     <ul>
       <li><strong>Facet by</strong> can separate groups or show all data together.</li>
       <li><strong>Color by</strong> can overlay a categorical field or use one color.</li>
       <li><strong>Trend line</strong> supports LOESS, linear fit, or no fit.</li>
       <li><strong>Show individual observations</strong> toggles pseudobulk points.</li>
-      <li>Each eligible facet receives a Spearman monotonic-trend test; facet p-values are BH corrected.</li>
+      <li><strong>Facets per row</strong>, <strong>Height per facet</strong>, <strong>Facets per page</strong>, and <strong>Page Number</strong> keep large faceted views readable. Tall plots remain vertically scrollable.</li>
+      <li>Each eligible facet receives a Spearman monotonic-trend test using the displayed metric; facet p-values are BH corrected.</li>
     </ul>
 
     <h4 id="heatmap">Heatmap of mean expression</h4>
-    <p>The heatmap displays mean expression for every occupied combination of two dimensions.</p>
+    <p>The heatmap displays mean expression or mean fraction expressing for every occupied combination of two dimensions.</p>
     <ul>
-      <li>Tile color represents mean expression.</li>
+      <li>Tile color represents the selected gene metric.</li>
       <li><strong>Show number of observations</strong> optionally labels each tile with its contributing observation count.</li>
-      <li>Manually selected expression limits apply to the fill scale.</li>
-      <li>A sparse rook-neighbor Moran's I permutation test summarizes autocorrelation across the current ordered matrix.</li>
+      <li>Automatically calculated or manually selected limits apply to the fill scale.</li>
+      <li>A sparse rook-neighbor Moran's I test with 999 permutations summarizes autocorrelation of the displayed metric across the current ordered matrix.</li>
     </ul>
 
     <h4 id="dotplot">Dot plot of mean expression</h4>
-    <p>The dot plot uses the same two-dimensional grouping as the heatmap. Dot color and dot area represent mean expression, with selected limits applied to both encodings. A sparse rook-neighbor Moran's I permutation test summarizes matrix autocorrelation.</p>
+    <p>The dot plot uses the same two-dimensional grouping as the heatmap. Dot color represents mean expression, while dot area represents the weighted fraction of cells expressing the gene. <strong>Min. dot size</strong> and <strong>Max. dot size</strong> control the displayed size range without changing the underlying proportions; combinations with no data remain absent. The note below the plot reports separate sparse rook-neighbor Moran's I tests with 999 permutations for expression and fraction expressing.</p>
 
     <h4 id="violin">Violin plot with observations</h4>
-    <p>The violin plot shows expression distributions across horizontal-axis groups and second-dimension facets.</p>
+    <p>The distribution plot shows expression or fraction-expressing distributions across horizontal-axis groups and second-dimension facets.</p>
     <ul>
-      <li>Transparent points show observations; white points and error bars show means and standard errors.</li>
+      <li><strong>Distribution display</strong> switches between violin and boxplot representations.</li>
+      <li><strong>Show individual observations</strong> toggles the overlaid pseudobulk points; white points and error bars show means and standard errors.</li>
       <li>Groups with fewer than two observations are omitted.</li>
-      <li>Each eligible facet receives a Kruskal-Wallis test across horizontal-axis groups; facet p-values are BH corrected.</li>
+      <li><strong>Facets per row</strong>, <strong>Height per facet</strong>, <strong>Facets per page</strong>, and <strong>Page Number</strong> limit the size of each rendered image while preserving the complete filtered analysis.</li>
+      <li>Each eligible facet receives a Kruskal-Wallis test across horizontal-axis groups using the displayed metric; facet p-values are BH corrected across all eligible facets, not only the current page.</li>
     </ul>
 
     <h4 id="correlation">Two-gene correlation</h4>
-    <p>This plot compares <code>ln(CPM + 1)</code> for the loaded gene and a separately retrieved comparison gene, joined by <code>sample_id</code> after applying active filters.</p>
+    <p>This plot compares two separately retrieved genes across matched <code>sample_id</code> values after applying active filters. The selected metric can be <code>ln(CPM + 1)</code> or fraction expressing.</p>
     <ul>
       <li>Use <strong>Gene 2nd gene data</strong> to retrieve the comparison gene through the same lazy reader and cache.</li>
       <li>Points can be colored by metadata and are sized by <code>log10(number_of_cells)</code> when cell counts are available.</li>
+      <li><strong>Min. dot size</strong> and <strong>Max. dot size</strong> adjust the correlation-point size range.</li>
       <li>Shared automatic or manual limits apply equally to both axes.</li>
       <li>The plot is square with equal axis spacing.</li>
       <li>An optional orthogonal total-least-squares line is invariant to swapping the x and y genes.</li>
-      <li>Pearson R and its p-value appear in the plot title.</li>
+      <li>Expression mode reports Pearson R; fraction-expressing mode reports Spearman rho. The corresponding p-value appears in the plot title.</li>
     </ul>
 
     <h4 id="statistics">Plot-specific exploratory statistics</h4>
     <ul>
-      <li><strong>Trajectory:</strong> per-facet Spearman rho for monotonic progression, with BH correction across eligible facets.</li>
-      <li><strong>Heatmap and dot:</strong> sparse rook-neighbor Moran's I with a one-sided permutation p-value for positive autocorrelation.</li>
-      <li><strong>Violin:</strong> per-facet Kruskal-Wallis tests across horizontal-axis groups, with BH correction.</li>
-      <li><strong>Two-gene correlation:</strong> Pearson correlation for matched observations.</li>
+      <li><strong>Trajectory:</strong> per-facet Spearman rho for monotonic progression in expression or fraction expressing, with BH correction across eligible facets.</li>
+      <li><strong>Heatmap:</strong> sparse rook-neighbor Moran's I with a one-sided 999-permutation p-value for autocorrelation of the displayed metric.</li>
+      <li><strong>Dot:</strong> separate sparse rook-neighbor Moran's I tests for mean expression and fraction expressing.</li>
+      <li><strong>Violin or boxplot:</strong> per-facet Kruskal-Wallis tests of the displayed metric across horizontal-axis groups, with BH correction.</li>
+      <li><strong>Two-gene correlation:</strong> Pearson correlation for expression and Spearman correlation for fraction expressing.</li>
     </ul>
     <div class="note"><strong>Interpretation:</strong> These statistics describe the currently selected gene, filters, dimensions, and displayed observations. Interactive testing across many genes and configurations is exploratory and introduces multiple-comparison considerations beyond within-plot BH corrections.</div>
 
@@ -267,7 +278,8 @@ shiny::runApp(".")</code></pre>
 │       ├── renv.lock
 │       └── www/
 │           ├── Developing_Mouse_Visual_Cortex_logo.png
-│           └── allen_institute_logo.svg
+│           ├── allen_institute_logo.svg
+│           └── tokens.csv
 ├── index.html
 ├── README.md
 └── requirements.txt</code></pre>
