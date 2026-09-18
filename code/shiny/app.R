@@ -10,6 +10,8 @@ suppressPackageStartupMessages({
   library(DT)
 })
 
+source("abc_atlas_gene_url_function.R")
+
 # ============================================================
 # Developing Mouse Visual Cortex Gene Expression Viewer
 # ============================================================
@@ -1100,7 +1102,11 @@ ui <- function(request) {
           class = "btn-outline-primary",
           width = "100%"
         ),
-        div(class = "gene-status", textOutput("gene_status"))
+        div(class = "gene-status", textOutput("gene_status")),
+        conditionalPanel(
+          condition = "output.gene_loaded",
+          uiOutput("plot_in_abc_atlas_button")
+        )
       ),
       conditionalPanel(
         condition = "output.gene_loaded",
@@ -1666,6 +1672,7 @@ server <- function(input, output, session) {
   loaded_gene <- reactiveVal(NULL)
   requested_gene <- reactiveVal(default_gene)
   gene_status_message <- reactiveVal("No gene retrieved yet.")
+  abc_atlas_url <- reactiveVal(NULL)
   comparison_gene_data <- reactiveVal(NULL)
   loaded_comparison_gene <- reactiveVal(NULL)
   comparison_gene_status_message <- reactiveVal(
@@ -2204,6 +2211,58 @@ server <- function(input, output, session) {
   })
   
   output$gene_status <- renderText(gene_status_message())
+  
+  observeEvent(loaded_gene(), {
+    gene_symbol <- loaded_gene()
+    abc_atlas_url(NULL)
+    
+    req(
+      !is.null(gene_data()),
+      length(gene_symbol) == 1,
+      !is.na(gene_symbol),
+      nzchar(gene_symbol)
+    )
+    
+    tryCatch(
+      {
+        abc_atlas_url(
+          create_abc_atlas_gene_url(
+            desired_gene = gene_symbol
+          )
+        )
+      },
+      error = function(e) {
+        showNotification(
+          paste(
+            "Unable to create the ABC Atlas link:",
+            conditionMessage(e)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  }, ignoreInit = TRUE)
+  
+  output$plot_in_abc_atlas_button <- renderUI({
+    url <- abc_atlas_url()
+    req(
+      !is.null(gene_data()),
+      !is.null(loaded_gene()),
+      length(url) == 1,
+      !is.na(url),
+      nzchar(url)
+    )
+    
+    tags$a(
+      href = url,
+      target = "_blank",
+      rel = "noopener noreferrer",
+      class = "btn btn-outline-primary w-100",
+      icon("arrow-up-right-from-square"),
+      "Plot in ABC Atlas"
+    )
+  })
   
   observeEvent(input$comparison_gene, {
     selected_gene <- input$comparison_gene
