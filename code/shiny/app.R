@@ -10,8 +10,6 @@ suppressPackageStartupMessages({
   library(DT)
 })
 
-source("abc_atlas_gene_url_function.R")
-
 # ============================================================
 # Developing Mouse Visual Cortex Gene Expression Viewer
 # ============================================================
@@ -140,6 +138,79 @@ table_column_definitions <- table_column_definitions |>
     nzchar(column_definitions)
   ) |>
   distinct(column_names, .keep_all = TRUE)
+
+# ============================================================
+# Precomputed ABC Atlas gene URLs
+# ============================================================
+abc_atlas_urls_path <- "abc_atlas_gene_urls.csv.gz"
+
+if (!file.exists(abc_atlas_urls_path)) {
+  stop(
+    "Missing local ABC Atlas URL file: ",
+    abc_atlas_urls_path,
+    call. = FALSE
+  )
+}
+
+abc_atlas_gene_urls <- read.csv(
+  gzfile(abc_atlas_urls_path, open = "rt"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+if (ncol(abc_atlas_gene_urls) != 2L) {
+  stop(
+    abc_atlas_urls_path,
+    " must contain exactly two columns: gene symbol and URL.",
+    call. = FALSE
+  )
+}
+
+names(abc_atlas_gene_urls) <- c(
+  "gene_symbol",
+  "abc_atlas_url"
+)
+
+abc_atlas_gene_urls$gene_symbol <- trimws(
+  as.character(abc_atlas_gene_urls$gene_symbol)
+)
+abc_atlas_gene_urls$abc_atlas_url <- trimws(
+  as.character(abc_atlas_gene_urls$abc_atlas_url)
+)
+
+valid_abc_atlas_rows <-
+  !is.na(abc_atlas_gene_urls$gene_symbol) &
+  nzchar(abc_atlas_gene_urls$gene_symbol) &
+  !is.na(abc_atlas_gene_urls$abc_atlas_url) &
+  nzchar(abc_atlas_gene_urls$abc_atlas_url) &
+  startsWith(
+    abc_atlas_gene_urls$abc_atlas_url,
+    "https://knowledge.brain-map.org/abcatlas#"
+  )
+
+abc_atlas_gene_urls <- abc_atlas_gene_urls[
+  valid_abc_atlas_rows,
+  ,
+  drop = FALSE
+]
+abc_atlas_gene_urls <- abc_atlas_gene_urls[
+  !duplicated(abc_atlas_gene_urls$gene_symbol),
+  ,
+  drop = FALSE
+]
+
+if (nrow(abc_atlas_gene_urls) == 0L) {
+  stop(
+    abc_atlas_urls_path,
+    " contains no valid ABC Atlas gene URLs.",
+    call. = FALSE
+  )
+}
+
+abc_atlas_url_lookup <- setNames(
+  abc_atlas_gene_urls$abc_atlas_url,
+  abc_atlas_gene_urls$gene_symbol
+)
 
 # ============================================================
 # Optional searchable glossary
@@ -2223,25 +2294,17 @@ server <- function(input, output, session) {
       nzchar(gene_symbol)
     )
     
-    tryCatch(
-      {
-        abc_atlas_url(
-          create_abc_atlas_gene_url(
-            desired_gene = gene_symbol
-          )
-        )
-      },
-      error = function(e) {
-        showNotification(
-          paste(
-            "Unable to create the ABC Atlas link:",
-            conditionMessage(e)
-          ),
-          type = "error",
-          duration = NULL
-        )
-      }
+    matched_url <- unname(
+      abc_atlas_url_lookup[gene_symbol]
     )
+    
+    if (
+      length(matched_url) == 1L &&
+      !is.na(matched_url) &&
+      nzchar(matched_url)
+    ) {
+      abc_atlas_url(matched_url)
+    }
   }, ignoreInit = TRUE)
   
   output$plot_in_abc_atlas_button <- renderUI({
