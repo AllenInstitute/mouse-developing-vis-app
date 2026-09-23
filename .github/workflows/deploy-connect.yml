@@ -81,8 +81,7 @@ jobs:
 
           app_files <- c(
             "app.R",
-            "abc_atlas_gene_url_function.R",
-            "abc_atlas_schema_kiwi.txt",
+            "abc_atlas_gene_urls.csv.gz",
             "table_column_definitions.csv",
             "renv.lock",
             list.files(
@@ -121,8 +120,7 @@ jobs:
         shell: bash
         run: |
           test -f code/shiny/app.R
-          test -f code/shiny/abc_atlas_gene_url_function.R
-          test -f code/shiny/abc_atlas_schema_kiwi.txt
+          test -f code/shiny/abc_atlas_gene_urls.csv.gz
           test -f code/shiny/table_column_definitions.csv
           test -f code/shiny/renv.lock
           test -f code/shiny/manifest.json
