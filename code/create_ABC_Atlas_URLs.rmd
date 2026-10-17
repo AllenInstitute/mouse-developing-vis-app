@@ -1,0 +1,176 @@
+This script will generate a series of tables with ABC Atlas links using the kiwi "API" for inclusion in CHARGE.
+
+## Setup
+
+First let's load the libraries and create a landing point.
+```{r setup}
+setwd("/root/capsule/scratch/")
+dir.create("links")
+source("code/shiny/abc_atlas_gene_url_function.R")
+
+library(httr2)
+library(stringr)
+library(dplyr)
+library(data.table)
+
+schema_path = "/root/capsule/code/shiny/abc_atlas_schema_kiwi.txt"
+```
+
+## Building starting URLs
+
+In this section we will build our starting URLs, select starting genes, and read in the set of all possible 
+genes for the relevant data set. This is a largely manual process and this section will include it. Note that
+for each of the next few sections, the order of the rows matters and is the same.
+
+```{r set up URLs}
+name = c(
+    "SpC_human",
+    "SpC_mouse",
+    "SpC_macaque",
+    "BG_human",
+    "BG_macaque",
+    "BG_marmoset",
+    "MTG_human_SEAAD",
+    "MTG_human_Hodge",#
+    "M1_human",#
+    "Neocortex_human_2019",
+    "CortexHip_mouse_10x",
+    "CortexHip_mouse_SS",
+    "VispALM_mouse",
+    "LGN_human",
+    "LGN_mouse",
+    "LGN_macaque"
+)
+starting_genes=c(
+    "AQP4",
+    "Aqp4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "AQP4",
+    "Aqp4",
+    "Aqp4",
+    "Aqp4",
+    "AQP4",
+    "Aqp4",
+    "AQP4"
+)
+starting_urls=c(
+    "https://mousespinal.brain-map.org/imageseries/list/1.html?searchExp=false&positionLow=1&positionHigh=2000&searchSym=t&searchAlt=t&searchName=t&gene_term=",
+    "https://mousespinal.brain-map.org/imageseries/list/1.html?searchExp=false&positionLow=1&positionHigh=2000&searchSym=t&searchAlt=t&searchName=t&gene_term=",
+    "https://mousespinal.brain-map.org/imageseries/list/1.html?searchExp=false&positionLow=1&positionHigh=2000&searchSym=t&searchAlt=t&searchName=t&gene_term=",
+    "https://knowledge.brain-map.org/abcatlas#AQIBM0NQSVAyODA0U0JEWDFEWDFSVwACUzVLUVRGSENSS0hWWlZSUjVIUgADBQFFM0hHQllIUkM5OEdBNkZXOUY2AAIETm9ubmV1cm9uAEdsdXQgU2VybyBEb3BhAFN1YnBhbGxpdW0gR0FCQQBTdWJwYWxsaXVtIEdBQkEtR2x1dAAAATNYQk9GQlIzMDJFWUMwVVFENTEAAgAAAVNRNldKTzBHTlVKR0ZVOExIVlYAAgAAAUhLMTRPMUFTQU5QWUhPTkZMTFEAAgAAATZFV0JTRUo0WUZWR0tJMkFQQkwAAgAABAEAAoVsLWWGxlUGA4aaum%2BGLt%2FTBFdNUDhOTUo1RDhYTzFBT0kxTDkABYHYoeuEthGZhNqUXYUChoYGAAcAAAUABgEBAkhLMTRPMUFTQU5QWUhPTkZMTFEAAAhIWkVZWFNRT0VETkQyUTZNOTdNAAlQT1oySENQQlQ2MERTREo4VUE3AAoACwE2VDk2MjYwMTI2VFY0S0xHRFhHAAJDUkVIUkNLMllYUldKSzJKMEFMAAMBBAEAAiMwMDAwMDAAA8gBAAUBAQIjMDAwMDAwAAPIAQAADAANAX8AAAACfwAAAAAOAX8AAAACflZVVQN0aGVtZQAAAAFFSVVBTFBZTkdaNVZVN1kyWTAyAAJRWlEyUUJNVTRUNUk0N0QxSzRGAAMABAEBAoGwEF6BzKIaA4OCDtWEoGUqAAUBAUFRUDQAAAYBAAJBUVA0AAWA%2FAPIgqIErgaWogEHAiNGRkZGRkYAAwAGR0VORQAHAAgBCQAAAAhGVExBVU9WNlNMQjA3MVNWTlU5AAlQT1oySENQQlQ2MERTREo4VUE3AAoACwFub25lAAJub25lAAMBBAEAAiMwMDAwMDAAA8gBAAUBAQIjMDAwMDAwAAPIAQAADAANAX8AAAACfwAAAAAOAX8AAAACflZVVQN0aGVtZQAAAAIDAwAA",
+    "https://knowledge.brain-map.org/abcatlas#AQIBVk00RTZKOURQWVlEN0UwQkhOQgACS0daTEFXSVBDUjRXOThGNUxENgADAAQBAAKF5uKGhpZBIAOGXPoyhqCThgRXTVA4Tk1KNUQ4WE8xQU9JMUw5AAWB2KHrhLYRmYTalF2FAoaGBgAHAAAFAQFUTUVNMTMyQwAABgEBAkhLMTRPMUFTQU5QWUhPTkZMTFEAAAg5QVVURTlTMTBLQUVDMlVaTzMxAAlQT1oySENQQlQ2MERTREo4VUE3AAoACwFZM1AxSk0xRU5DR1dFVzhVU1RWAAJDUkVIUkNLMllYUldKSzJKMEFMAAMBBAEAAiMwMDAwMDAAA8gBAAUBAQIjMDAwMDAwAAPIAQAADAANAX8AAAACfwAAAAAOAX8AAAACflZVVQN0aGVtZQAAAAFFSVVBTFBZTkdaNVZVN1kyWTAyAAJRWlEyUUJNVTRUNUk0N0QxSzRGAAMABAEBAoGwEF6BzKIaA4OCDtWEoGUqAAUBAUFRUDQAAAYBAAJBUVA0AAWA%2FAPIgqIErgaWogEHAiNGRkZGRkYAAwAGR0VORQAHAAgBCQAAAAhGVExBVU9WNlNMQjA3MVNWTlU5AAlQT1oySENQQlQ2MERTREo4VUE3AAoACwFub25lAAJub25lAAMBBAEAAiMwMDAwMDAAA8gBAAUBAQIjMDAwMDAwAAPIAQAADAANAX8AAAACfwAAAAAOAX8AAAACflZVVQN0aGVtZQAAAAIDAwAA",
+    "https://knowledge.brain-map.org/abcatlas#AQIBTlhKOU5aQVFBNU1FSFFOT1dKUQACVEdCUTJGRVYyN04wQ1BMS1ZBWgADAAQBAAKF%2FlmIhY7XHwOFHE1PhfScqgRXTVA4Tk1KNUQ4WE8xQU9JMUw5AAWEFMQWg4zFUoRiab%2BEtOdLBgAHAAAFAQFOSFMAAAYBAQJISzE0TzFBU0FOUFlIT05GTExRAAAISUE2WTZTTjdRWlNJRUowRlowVQAJUE9aMkhDUEJUNjBEU0RKOFVBNwAKAAsBNzQxNkI1WEpEU1kwSERGOTNSTwACQ1JFSFJDSzJZWFJXSksySjBBTAADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABRUlVQUxQWU5HWjVWVTdZMlkwMgACUVpRMlFCTVU0VDVJNDdEMUs0RgADAAQBAQKBsBBegcyiGgODgg7VhKBlKgAFAQFBUVA0AAAGAQACQVFQNAAFgPwDyIKiBK4GlqIBBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIRlRMQVVPVjZTTEIwNzFTVk5VOQAJUE9aMkhDUEJUNjBEU0RKOFVBNwAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://knowledge.brain-map.org/abcatlas#AQIBUU5aTUdPWlhINEVQQ0lVM1YzQQACUlJSNkZOM1dMUjJMOUlWV1hRVAADAAQBAAKMxIiIjQ4RvgOOvClzjrg92AQyTlFUSUU3VEFNUDhQUUFITzRQAAWJT5zAhgPp14lOnMCLmAGzBgAHAAAFAAYBAQIwVFRGMVBQRlJNWFNWVldPNzIyAAAIMkNLT1FJSzJOOUlFN1Q0V0k4RgAJRkhVVUsxOUE1WEo3RkM5WVlUNAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABTDczWFZKMUdHVERSUzFSUzVLNAACR0xNRUowRDg5SzgzQ0NBUjFITwADAAQBAQJ9FzFLf0gzgAOFyjwThTwxXgAFAQFBUVA0AAAGAQACQVFQNAAFefyEPYGmBBoG%2Br0CBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIOThKRTNaMUlMU0RDSUVNQTZMUQAJVU1TVlhURElBWlRBRktHRTQzVAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://knowledge.brain-map.org/abcatlas#AQIBUU5aTUdPWlhINEVQQ0lVM1YzQQACUlJSNkZOM1dMUjJMOUlWV1hRVAADAAQBAAKMxIiIjQ4RvgOOvClzjrg92AQyTlFUSUU3VEFNUDhQUUFITzRQAAWJT5zAhgPp14lOnMCLmAGzBgAHAAAFAAYBAQIwVFRGMVBQRlJNWFNWVldPNzIyAAAIMkNLT1FJSzJOOUlFN1Q0V0k4RgAJRkhVVUsxOUE1WEo3RkM5WVlUNAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABTDczWFZKMUdHVERSUzFSUzVLNAACR0xNRUowRDg5SzgzQ0NBUjFITwADAAQBAQJ9FzFLf0gzgAOFyjwThTwxXgAFAQFBUVA0AAAGAQACQVFQNAAFefyEPYGmBBoG%2Br0CBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIOThKRTNaMUlMU0RDSUVNQTZMUQAJVU1TVlhURElBWlRBRktHRTQzVAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://celltypes.brain-map.org/rnaseq/human_m1_10x?selectedVisualization=Scatter+Plot&colorByFeature=Gene+Expression&colorByFeatureValue=",#M1
+    "https://knowledge.brain-map.org/abcatlas#AQIBUU5aTUdPWlhINEVQQ0lVM1YzQQACUlJSNkZOM1dMUjJMOUlWV1hRVAADAAQBAAKMxIiIjQ4RvgOOvClzjrg92AQyTlFUSUU3VEFNUDhQUUFITzRQAAWJT5zAhgPp14lOnMCLmAGzBgAHAAAFAAYBAQJCWlk3WEJHMzRVUkFUMUlVM0M3AAAIMkNLT1FJSzJOOUlFN1Q0V0k4RgAJRkhVVUsxOUE1WEo3RkM5WVlUNAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABSEZWWDM5QkI2S1QyVExCNlc0QQACREFUU0VBQURNVUxUSVRFU1REM0UxMUUAAwAEAQECgqyOMYE8StEDhO5zJYRGXnUABQEBQVFQNAAABgEAAkFRUDQABX8EPpyCLoaoBsbaAwcCI0ZGRkZGRgADAAZHRU5FAAcACAEJAAAACEU2Qzg3MzM3NkIyQThBQTA2MwAJVU1TVlhURElBWlRBRktHRTQzVAAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://celltypes.brain-map.org/rnaseq/mouse_ctx-hpf_10x?selectedVisualization=Scatter+Plot&colorByFeature=Gene+Expression&colorByFeatureValue=",
+    "https://celltypes.brain-map.org/rnaseq/mouse_ctx-hpf_smart-seq?selectedVisualization=Scatter+Plot&colorByFeature=Gene+Expression&colorByFeatureValue=",
+    "https://knowledge.brain-map.org/abcatlas#AQIBSzlKTjIzUDI0S1FDR0s5VTc1QQACSFNZWlBaVzE2NjlVODIxQldZUAADAwE3M0dWVERYREVHRTI3TTJYSk1UAAIAAAFJOUxOUDBPMVJOOEs0U04yR1dZAAICTU9zAFZJU3AAAAFURlFGTE5FUDNWMjIyWTg4QzY0AAIAAAQBAAKDYJzZg2gCQAOFqLwPhQ69WQQyTlFUSUU3VEFNUDhQUUFITzRQAAWBr6ZKgemsDoGggUeAktXoBgAHAAAFAAYBAQJGUzAwRFhWMFQ5UjFYOUZKNFFFAAAIVkZPRllQRlFHUktVRFFVWjNGRgAJTFZEQkpBVzhCSTVZU1MxUVVCRwAKAAsBVExPS1dDTDk1UlUwM0Q5UEVURwACNzNHVlREWERFR0UyN00yWEpNVAADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABQVA4Sk5ONUxZQUJHVk1HS1kxQgACUTFOQ1dXUEc2RlowRE5JWEpCUQADAQFZOTM3Q1ZVU1ZaQzdLWU9IV1ZPAAIEVklTAFZJUy1QVExwAE1PLUZSUABNT3AAAAQBAQKBrOWEgbxpYgOEBMRlhP4xxwAFAQFBcXA0AAAGAQACQXFwNAAFgH5oQoJuf7MGntoCBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIRzRJNEdGSlhKQjlBVFozUFRYMQAJTFZEQkpBVzhCSTVZU1MxUVVCRwAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://knowledge.brain-map.org/abcatlas#AQIBOU02NEo3UzBBM1pOSUpBNFZTNgACR1o5NFo4M1JYVVRFQ0hZS1FPNAADAQFKR1VSQkNWUlY4QlhKWjY0MlZPAAIBSHVtYW4gTEcAAAQBAQKBKrx%2FgbyuWgOF7FPihvDWMgAFAQFBUVA0AAAGAQACQVFQNAAFfyzp1oJcRJwG4q8GBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIVU1aSjdaTEY4RzVGSDVTOVk0VQAJQzNSUlZBSzE4SEc2UTFKTjZaUQAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABOU02NEo3UzBBM1pOSUpBNFZTNgACUjVGV1VWVEVBMk9XOU5KUU1ZOQADAQFKR1VSQkNWUlY4QlhKWjY0MlZPAAIBSHVtYW4gTEcAAAQBAQKBgKgzfj%2FjIAOGzhcKhryOUgAFAQFBUVA0AAAGAQACQVFQNAAFfyzp1oJcRJwG4q8GBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAINVQ0QzNNQzNMTlpXRUJERlVFWgAJQzNSUlZBSzE4SEc2UTFKTjZaUQAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://knowledge.brain-map.org/abcatlas#AQIBSzlKTjIzUDI0S1FDR0s5VTc1QQACSFNZWlBaVzE2NjlVODIxQldZUAADAwE3M0dWVERYREVHRTI3TTJYSk1UAAIAAAFJOUxOUDBPMVJOOEs0U04yR1dZAAIBTEdkAAABVEZRRkxORVAzVjIyMlk4OEM2NAACAAAEAQACg7yhToM0Q3kDg3T8MoNKloYEMk5RVElFN1RBTVA4UFFBSE80UAAFga%2BmSoHprA6BoIFHgJLV6AYABwAABQEBU2NuM2IAAAYBAQJGUzAwRFhWMFQ5UjFYOUZKNFFFAAAIVkZPRllQRlFHUktVRFFVWjNGRgAJTFZEQkpBVzhCSTVZU1MxUVVCRwAKAAsBVExPS1dDTDk1UlUwM0Q5UEVURwACNzNHVlREWERFR0UyN00yWEpNVAADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABQVA4Sk5ONUxZQUJHVk1HS1kxQgACUTFOQ1dXUEc2RlowRE5JWEpCUQADAQFZOTM3Q1ZVU1ZaQzdLWU9IV1ZPAAIBVEgAAAQBAQKBrOWEgbxpYgOEBMRlhP4xxwAFAQFBcXA0AAAGAQACQXFwNAAFgH5oQoJuf7MGntoCBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIRzRJNEdGSlhKQjlBVFozUFRYMQAJTFZEQkpBVzhCSTVZU1MxUVVCRwAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D",
+    "https://knowledge.brain-map.org/abcatlas#AQIBOU02NEo3UzBBM1pOSUpBNFZTNgACR1o5NFo4M1JYVVRFQ0hZS1FPNAADAQFKR1VSQkNWUlY4QlhKWjY0MlZPAAIBSHVtYW4gTEcAAAQBAQKBKrx%2FgbyuWgOF7FPihvDWMgAFAQFBUVA0AAAGAQACQVFQNAAFfyzp1oJcRJwG4q8GBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAIVU1aSjdaTEY4RzVGSDVTOVk0VQAJQzNSUlZBSzE4SEc2UTFKTjZaUQAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAABOU02NEo3UzBBM1pOSUpBNFZTNgACUjVGV1VWVEVBMk9XOU5KUU1ZOQADAQFKR1VSQkNWUlY4QlhKWjY0MlZPAAIBSHVtYW4gTEcAAAQBAQKBgKgzfj%2FjIAOGzhcKhryOUgAFAQFBUVA0AAAGAQACQVFQNAAFfyzp1oJcRJwG4q8GBwIjRkZGRkZGAAMABkdFTkUABwAIAQkAAAAINVQ0QzNNQzNMTlpXRUJERlVFWgAJQzNSUlZBSzE4SEc2UTFKTjZaUQAKAAsBbm9uZQACbm9uZQADAQQBAAIjMDAwMDAwAAPIAQAFAQECIzAwMDAwMAADyAEAAAwADQF%2FAAAAAn8AAAAADgF%2FAAAAAn5WVVUDdGhlbWUAAAACAwMAAA%3D%3D"
+)
+```
+
+Now set up complete gene lists
+
+```{r gene lists}
+# Functions for pulling complete gene lists
+get_gene_symbols_ABC_Atlas <- function(url) {
+  html <- httr2::request(url) %>%
+    httr2::req_perform() %>%
+    httr2::resp_body_string()
+
+  stringr::str_match_all(
+    html,
+    "<td>\\s*<b>([^<]+)</b>\\s*</td>"
+  )[[1]][,2]
+}
+get_gene_symbols_table <- function(url) {
+  df <- read.csv(url, row.names = 1, check.names = FALSE)
+  rownames(df)
+} 
+
+## Define the URLs
+prefix    = "https://raw.githubusercontent.com/AllenInstitute/abc_atlas_access/refs/heads/main/docs/gene_lists/"
+BG_fn     = paste0(prefix,"HMBA-10xMultiome-BG/human_gene_list.html")
+SEAAD_fn  = paste0(prefix,"SEA-AD-Multiregion-10X/gene_list.html")
+WMB_fn    = paste0(prefix,"WMB-10X/gene_list.html")
+WHB_fn    = paste0(prefix,"WHB-10Xv3/gene_list.html")
+
+M1_fn     = "https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/medians.csv"
+IsoHip_fn = "https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hpf_10x/medians.csv"
+
+## Pull the gene sets
+
+gene_sets <- list(
+    BG = get_gene_symbols_ABC_Atlas(BG_fn),
+    SEAAD = get_gene_symbols_ABC_Atlas(SEAAD_fn),
+    WMB = get_gene_symbols_ABC_Atlas(WMB_fn),
+    WHB = get_gene_symbols_ABC_Atlas(WHB_fn),
+    M1 = get_gene_symbols_table(M1_fn),
+    IsoHip = get_gene_symbols_table(IsoHip_fn)
+)
+
+
+# Which complete gene list to use for generating URLs
+which_list = c(
+    "WHB",
+    "WMB",
+    "WHB",
+    "BG",
+    "BG",
+    "BG",
+    "SEAAD",
+    "SEAAD",
+    "M1",
+    "SEAAD",
+    "IsoHip",
+    "IsoHip",
+    "WMB",
+    "WHB",
+    "WMB",
+    "WHB"
+)
+
+```
+
+
+```{r make URLs}
+
+create_transcriptomics_explorer_url <- function(desired_genes, starting_url, ...){
+    paste0(starting_url, desired_genes)
+}
+
+create_url <- function(desired_gene, starting_gene, starting_url, ...){
+    if(!grepl("https://knowledge.",starting_url)) 
+      return(create_transcriptomics_explorer_url(desired_genes=desired_gene, starting_gene=starting_gene, starting_url=starting_url, ...))
+    return(create_abc_atlas_gene_urls_batch(desired_genes=desired_gene, starting_gene=starting_gene, starting_url=starting_url, ...))
+}
+
+# Now create a list of all the links for all the data sets
+link_list <- list()
+for (i in 1:length(name)){
+    print(name[i])
+    genes = gene_sets[[which_list[i]]]
+    print(paste(length(genes),"genes in this data set."))
+    urls <- create_url(genes,starting_genes[i],starting_urls[i],schema_path = "../code/shiny/abc_atlas_schema_kiwi.txt")
+    link_list[[i]] <- data.frame(gene = genes,url  = urls)
+}
+names(link_list) <- name
+```
+
+Finally output the results to a series of csv files.
+
+```{r output results}
+for (nm in name)
+  data.table::fwrite(link_list[[nm]], paste0("links/",nm,".csv.gz"))
+save(link_list,file="link_list.RData")
+```
