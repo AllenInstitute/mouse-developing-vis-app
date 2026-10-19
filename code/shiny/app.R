@@ -1183,8 +1183,31 @@ ui <- function(request) {
           )
         )
       ),
-      helpText(
-        "Choose a gene, retrieve its data, select plot options, and generate the plot."
+      div(
+        class = "gene-controls",
+        tags$label("Getting started", style = "font-size: 1rem; margin-bottom: 4px;"),
+        div(
+          class = "resource-button-row",
+          style = "grid-template-columns: 1fr 1fr; margin-top: 0;",
+          tags$a(
+            href = "Overview.mp4",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            class = "btn sidebar-secondary",
+            style = "font-size: 0.8rem !important;",
+            icon("video"),
+            tags$span("Watch the overview")
+          ),
+          tags$a(
+            href = "https://alleninstitute.github.io/mouse-developing-vis-app/",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            class = "btn sidebar-secondary",
+            style = "font-size: 0.8rem !important;",
+            icon("lightbulb"),
+            tags$span("Learn more")
+          )
+        )
       ),
       div(
         class = "gene-controls",
@@ -1339,7 +1362,7 @@ ui <- function(request) {
         tagList(
           hr(style = "margin: 3px 0;"),
           div(
-            class = "glossary-panel",
+            class = "glossary-panel gene-controls",
             selectizeInput(
               "glossary_token",
               "Glossary of terms",
@@ -1356,8 +1379,7 @@ ui <- function(request) {
               class = "glossary-definition",
               textOutput("glossary_definition", inline = TRUE)
             )
-          ),
-          hr(style = "margin: 3px 0;")
+          )
         )
       },
       
@@ -1412,7 +1434,7 @@ ui <- function(request) {
         style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
       ),
       p(
-        "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT 5.6 Think). All data included in the app are from ",
+        "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT-5.6 Think and GPT-6.1 Sol). All data included in the app are from ",
         a(
           "Continuous cell-type diversification in mouse visual cortex development",
           href = "https://doi.org/10.1038/s41586-025-09644-1",
