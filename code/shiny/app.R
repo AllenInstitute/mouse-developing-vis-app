@@ -152,11 +152,11 @@ if (!file.exists(abc_atlas_urls_path)) {
   )
 }
 
-abc_atlas_gene_urls <- read.csv(
-  gzfile(abc_atlas_urls_path, open = "rt"),
-  stringsAsFactors = FALSE,
-  check.names = FALSE
-)
+abc_atlas_gene_urls <- local({
+  connection <- gzfile(abc_atlas_urls_path, open = "rt")
+  on.exit(close(connection), add = TRUE)
+  read.csv(connection, stringsAsFactors = FALSE, check.names = FALSE)
+})
 
 if (ncol(abc_atlas_gene_urls) != 2L) {
   stop(
@@ -362,6 +362,23 @@ gene_symbol_to_key <- setNames(
   gene_map$gene_symbol
 )
 
+# Display-only CP10K normalization; source files and schemas are unchanged.
+if ("ln(mean_CPM+1)" %in% names(gene_statistics)) {
+  gene_statistics[["ln(mean_CPM+1)"]] <- log1p(expm1(as.numeric(gene_statistics[["ln(mean_CPM+1)"]])) / 100)
+  names(gene_statistics)[names(gene_statistics) == "ln(mean_CPM+1)"] <- "ln(mean_CP10K+1)"
+  rows <- table_column_definitions$column_names == "ln(mean_CPM+1)"
+  table_column_definitions$column_names[rows] <- "ln(mean_CP10K+1)"
+  table_column_definitions$column_definitions[rows] <- "Natural logarithm of one plus mean counts per ten thousand: ln(mean_CP10K+1)."
+}
+shared_columns <- c(statistics_gene_column, "ln(mean_CP10K+1)", "frac_expr",
+                    "max_ROI", "log2fc_ROI", "max_frac_ROI", "frac_diff_ROI", "max_subclass",
+                    "log2fc_subclass", "max_frac_subclass", "frac_diff_subclass")
+column_order <- unique(c(intersect(shared_columns, names(gene_statistics)),
+                         setdiff(names(gene_statistics), c(shared_columns, "gene_type")),
+                         intersect("gene_type", names(gene_statistics))))
+gene_statistics <- gene_statistics[, column_order, drop = FALSE]
+metadata$none <- "All data"  # Internal single-facet grouping only.
+
 # ============================================================
 # Value sets: deterministic order and colors
 # ============================================================
@@ -434,7 +451,7 @@ value_set_for <- function(field, observed_values) {
   field_key <- normalize_value_set_field(field)
   
   specification <- value_sets |>
-    filter(.data$field_key == field_key) |>
+    filter(.data$field_key == .env$field_key) |>
     arrange(order)
   
   if (nrow(specification) == 0) {
@@ -823,7 +840,10 @@ default_second <- if (!is.na(subclass_field)) {
   cluster_field
 }
 default_facet <- if (!is.na(subclass_field)) subclass_field else cluster_field
-default_color <- region_field
+default_color <- "none"
+default_correlation_color <- if (!is.na(subclass_field)) subclass_field else "none"
+progression_fields <- age_field
+default_progression <- age_field
 
 # ============================================================
 # Header and UI
@@ -878,6 +898,19 @@ ui <- function(request) {
       ),
       tags$style(HTML(
         "
+
+      .section-major { border-top: 3px solid rgba(255,255,255,.7); padding-top: 12px !important; margin-top: 16px !important; margin-bottom: 8px !important; }
+      .section-minor { border-top: 1px solid rgba(255,255,255,.4); padding-top: 9px !important; margin-top: 12px !important; margin-bottom: 7px !important; }
+      .gene-controls { padding: 8px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; }
+      .sidebar-secondary { background: #666666 !important; border: 1px solid white !important; color: white !important; border-radius: .25rem; font-size: .68rem !important; font-weight: 600; padding: 4px 6px !important; min-height: 29px; text-decoration: none; }
+      .resource-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 5px; }
+      .resource-button-row .shiny-html-output { min-width: 0; }
+      .resource-button-row a { display: flex; align-items: center; justify-content: center; gap: 3px; }
+      .additional-options { border-top: 1px solid rgba(255,255,255,.4); margin-top: 12px; padding-top: 9px; }
+      .additional-options summary { cursor: pointer; font-weight: 600; list-style: none; margin-bottom: 8px; }
+      .additional-options summary::-webkit-details-marker { display: none; }
+      .additional-options summary::before { content: '+'; display: inline-block; width: 20px; }
+      .additional-options[open] summary::before { content: '-'; }
       html, body { width: 100%; overflow-x: hidden; }
       .navbar, header.navbar {
         background: #111827 !important;
@@ -893,13 +926,13 @@ ui <- function(request) {
       .mouse-header-spacer {
         width: 210px;
       }
-      
+
       .sidebar-logo-container {
         width: 100%;
         text-align: center;
         margin: 0 0 7px 0;
       }
-      
+
       .sidebar-logo {
         display: block;
         width: 100%;
@@ -1025,6 +1058,7 @@ ui <- function(request) {
         }
       }
       .gene-table-panel table.dataTable { font-size: .82rem; }
+      .gene-table-panel .dataTables_filter input, .gene-table-panel .dt-search input { width: 320px !important; max-width: 60vw; }
       .gene-table-panel table.dataTable thead th.has-definition {
         cursor: help;
         text-decoration: underline dotted;
@@ -1094,7 +1128,7 @@ ui <- function(request) {
         '    filter_fields: "Select one or more metadata fields used to filter the loaded gene data.",',
         '    plot_type: "Click the drop-down box to select the type of plot to view.",',
         '    trajectory_measure: "Choose whether the plot displays gene expression or the fraction of cells expressing the gene.",',
-        '    progression_variable: "Select the ordered developmental variable used on the trajectory axis.",',
+        '    progression_variable: "Select the developmental age variable used on the trajectory axis.",',
         '    facet_variable: "Select the metadata field used to divide the trajectory into separate panels.",',
         '    color_variable: "Select the metadata field used to color trajectory observations and smoothers.",',
         '    smoother: "Select the smoothing method used to summarize the trajectory.",',
@@ -1106,7 +1140,7 @@ ui <- function(request) {
         '    comparison_gene: "Select or search for the second gene used in the correlation plot.",',
         '    correlation_color_variable: "Select the metadata field used to color points in the two-gene plot.",',
         '    x_variable: "Select the metadata field shown on the horizontal axis.",',
-        '    second_dimension: "Select the metadata field shown on the vertical axis or used for violin facets."',
+        '    second_dimension: "Select the vertical-axis metadata field (or the facet field for violin plots)."',
         '  };',
         '  function applyDropdownHelp() {',
         '    document.querySelectorAll("select[id]").forEach(function(select) {',
@@ -1176,15 +1210,19 @@ ui <- function(request) {
         div(class = "gene-status", textOutput("gene_status")),
         conditionalPanel(
           condition = "output.gene_loaded",
-          uiOutput("plot_in_abc_atlas_button")
+          div(
+            class = "resource-button-row",
+            style = "display: flex; width: 95%; gap: 8px;",
+            div(style = "flex: 0 0 60%;", uiOutput("plot_in_abc_atlas_button")),
+            div(style = "flex: 0 0 40%;", uiOutput("genecards_button"))
+          )
         )
       ),
       conditionalPanel(
         condition = "output.gene_loaded",
         div(
           class = "compact-controls",
-          hr(),
-          h4("Filter and scale"),
+          h4("Filter and scale", class = "section-major"),
           selectizeInput(
             "filter_fields",
             "Filter metadata",
@@ -1207,315 +1245,91 @@ ui <- function(request) {
             "Discard observations with zero counts",
             FALSE
           ),
-          hr(),
-          br(),
-          h4("Plot"),
-          selectInput(
-            "plot_type",
-            "Plot type",
-            choices = c(
-              "Trajectory across development" = "trajectory",
-              "Heatmap of mean expression" = "heatmap",
-              "Dot plot of mean expression" = "dot",
-              "Violin plot with observations" = "violin",
-              "Two-gene correlation" = "correlation"
-            ),
-            selected = "trajectory"
+          h4("Plot gene data", class = "section-minor"),
+          selectInput("plot_type", "Plot type", choices = c(
+            "Trajectory across development" = "trajectory",
+            "Dot plot of expression" = "dot",
+            "Heatmap of expression" = "heatmap",
+            "Violin plot with observations" = "violin",
+            "Two-gene correlation" = "correlation"
+          ), selected = "trajectory"),
+          conditionalPanel(condition = "input.plot_type == 'trajectory'",
+                           selectInput("progression_variable", "Developmental progression axis", progression_fields, default_progression),
+                           selectInput("facet_variable", "Facet by", c("All data" = "none", cell_type_fields, region_field), default_facet),
+                           selectInput("color_variable", "Color by", c("All data" = "none", region_field), "none")
           ),
-          conditionalPanel(
-            condition = "input.plot_type != 'dot'",
-            selectInput(
-              "trajectory_measure",
-              "Gene metric",
-              choices = c(
-                "Gene expression" = "expression",
-                "Fraction of cells expressing" = "fraction"
-              ),
-              selected = "expression"
-            )
+          conditionalPanel(condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
+                           selectInput("x_variable", "Horizontal axis", plot_fields, default_x),
+                           selectInput("second_dimension", "Vertical axis", setdiff(plot_fields, default_x), default_second)
           ),
-          conditionalPanel(
-            condition = "input.plot_type == 'trajectory'",
-            selectInput(
-              "progression_variable",
-              "Developmental progression axis",
-              choices = age_field,
-              selected = age_field
-            ),
-            selectInput(
-              "facet_variable",
-              "Facet by (maximum 50 values)",
-              choices = c(
-                "Show all data together" = "none",
-                cell_type_fields,
-                region_field
-              ),
-              selected = default_facet
-            ),
-            selectInput(
-              "color_variable",
-              "Color by (maximum 50 values)",
-              choices = c(
-                "All data" = "none",
-                region_field
-              ),
-              selected = default_color
-            ),
-            selectInput(
-              "smoother",
-              "Trend line",
-              choices = c(
-                "LOESS smoother" = "loess",
-                "Linear fit" = "lm",
-                "None" = "none"
-              ),
-              selected = "loess"
-            )
+          conditionalPanel(condition = "input.plot_type == 'correlation'",
+                           selectizeInput("comparison_gene", "Comparison gene symbol", choices = NULL,
+                                          options = list(placeholder = "Type a comparison gene symbol", maxOptions = 50, create = FALSE)),
+                           actionButton("get_comparison_gene_data", "Get 2nd gene data", class = "btn-outline-primary", width = "100%"),
+                           div(class = "gene-status", textOutput("comparison_gene_status"))
           ),
-          conditionalPanel(
-            condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
-            selectInput(
-              "x_variable",
-              "Horizontal axis",
-              choices = plot_fields,
-              selected = default_x
-            ),
-            selectInput(
-              "second_dimension",
-              "Second dimension",
-              choices = setdiff(plot_fields, default_x),
-              selected = default_second
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
-            div(
-              class = "filter-row",
-              selectInput(
-                "facets_per_row",
-                "Facets per row",
-                choices = c(
-                  "1" = 1,
-                  "2" = 2,
-                  "3" = 3,
-                  "4" = 4
-                ),
-                selected = 3
-              ),
-              selectInput(
-                "facet_row_height",
-                "Height per facet",
-                choices = c(
-                  "Compact" = 225,
-                  "Standard" = 300,
-                  "Tall" = 450,
-                  "Extra tall" = 600
-                ),
-                selected = 300
-              )
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type == 'violin'",
-            selectInput(
-              "violin_display",
-              "Distribution display",
-              choices = c(
-                "Violin" = "violin",
-                "Boxplot" = "boxplot"
-              ),
-              selected = "violin"
-            ),
-            checkboxInput(
-              "show_violin_points",
-              "Show individual observations",
-              TRUE
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
-            div(
-              class = "filter-row",
-              selectInput(
-                "violin_facets_per_page",
-                "Facets per page",
-                choices = c(
-                  "8" = 8,
-                  "12" = 12,
-                  "20" = 20,
-                  "All" = "all"
-                ),
-                selected = 12
-              ),
-              uiOutput("violin_page_control")
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type == 'correlation'",
-            selectizeInput(
-              "comparison_gene",
-              "Comparison gene symbol",
-              choices = NULL,
-              selected = NULL,
-              options = list(
-                placeholder = "Type a comparison gene symbol",
-                maxOptions = 50,
-                create = FALSE
-              )
-            ),
-            actionButton(
-              "get_comparison_gene_data",
-              "Gene 2nd gene data",
-              class = "btn-outline-primary",
-              width = "100%"
-            ),
-            div(
-              class = "gene-status",
-              textOutput("comparison_gene_status")
-            ),
-            selectInput(
-              "correlation_color_variable",
-              "Color by (maximum 50 values)",
-              choices = c(
-                "All data" = "none",
-                region_field
-              ),
-              selected = default_color
-            ),
-            checkboxInput(
-              "correlation_automatic_limits",
-              "Use automatic axis limits",
-              TRUE
-            ),
-            conditionalPanel(
-              condition = "!input.correlation_automatic_limits",
-              div(
-                class = "expression-scale-row",
-                numericInput(
-                  "correlation_axis_minimum",
-                  "Minimum",
-                  value = 0,
-                  min = 0
-                ),
-                numericInput(
-                  "correlation_axis_maximum",
-                  "Maximum",
-                  value = 1,
-                  min = 0
-                )
-              )
-            ),
-            checkboxInput(
-              "show_orthogonal_fit",
-              "Show orthogonal fit line",
-              TRUE
-            ),
-            div(
-              class = "expression-scale-row",
-              numericInput(
-                "correlation_size_minimum",
-                "Min. dot size",
-                value = 1.5,
-                min = 0,
-                step = 0.5
-              ),
-              numericInput(
-                "correlation_size_maximum",
-                "Max. dot size",
-                value = 7,
-                min = 0.5,
-                step = 0.5
-              )
-            )
-          ),
-          conditionalPanel(
-            condition = "input.plot_type != 'correlation'",
-            conditionalPanel(
-              condition = "input.trajectory_measure == 'expression'",
-              checkboxInput(
-                "log_scale",
-                "Plot ln(CPM + 1)",
-                TRUE
-              )
-            ),
-            checkboxInput(
-              "automatic_expression_limits",
-              "Use automatic expression limits",
-              TRUE
-            ),
-            conditionalPanel(
-              condition = "!input.automatic_expression_limits",
-              div(
-                class = "expression-scale-row",
-                numericInput(
-                  "expression_minimum",
-                  "Minimum",
-                  value = 0,
-                  min = 0
-                ),
-                numericInput(
-                  "expression_maximum",
-                  "Maximum",
-                  value = 1,
-                  min = 0
-                )
-              )
-            ),
-            conditionalPanel(
-              condition = "input.plot_type == 'dot'",
-              div(
-                class = "expression-scale-row",
-                numericInput(
-                  "dot_size_minimum",
-                  "Min. dot size",
-                  value = 1,
-                  min = 0,
-                  step = 0.5
-                ),
-                numericInput(
-                  "dot_size_maximum",
-                  "Max. dot size",
-                  value = 9,
-                  min = 0.5,
-                  step = 0.5
-                )
-              )
-            ),
-            conditionalPanel(
-              condition = "input.plot_type == 'heatmap'",
-              checkboxInput(
-                "show_heatmap_counts",
-                "Show number of observations",
-                TRUE
-              )
-            ),
-            conditionalPanel(
-              condition = "input.plot_type == 'trajectory'",
-              checkboxInput(
-                "show_points",
-                "Show individual observations",
-                TRUE
-              )
-            )
-          ),
-          actionButton(
-            "make_plot",
-            "Generate plot",
-            class = "btn-primary",
-            width = "100%"
-          ),
-          actionButton(
-            "share_view",
-            "Share this view",
-            icon = icon("share-nodes"),
-            class = "btn-outline-light btn-sm mt-1",
-            width = "100%"
-          ),
-          actionButton(
-            "reset_defaults",
-            "Reset plot options",
-            class = "btn-outline-light btn-sm mt-1",
-            width = "100%"
+          conditionalPanel(condition = "input.plot_type != 'correlation' || output.comparison_gene_loaded",
+                           conditionalPanel(condition = "input.plot_type == 'correlation'",
+                                            selectInput("correlation_color_variable", "Color by", c("All data" = "none", unique(c(subclass_field, region_field))), default_correlation_color)
+                           ),
+                           actionButton("make_plot", "Generate plot", class = "btn-primary", width = "100%"),
+                           actionButton("reset_defaults", "Reset plot options", class = "sidebar-secondary mt-1", width = "100%"),
+                           actionButton("share_view", "Share this view", icon = icon("share-nodes"), class = "sidebar-secondary mt-1", width = "100%"),
+                           tags$details(class = "additional-options",
+                                        tags$summary("Additional plot options"),
+                                        conditionalPanel(condition = "input.plot_type != 'dot'",
+                                                         selectInput("trajectory_measure", "Gene metric", c("Gene expression" = "expression", "Fraction of cells expressing" = "fraction"), "expression")
+                                        ),
+                                        conditionalPanel(condition = "input.plot_type == 'trajectory'",
+                                                         selectInput("smoother", "Trend line", c("Linear fit" = "lm", "LOESS smoother" = "loess", "None" = "none"), "lm"),
+                                                         checkboxInput("show_fit_error", "Show 95% confidence (error of fit)", TRUE),
+                                                         checkboxInput("show_points", "Show individual observations", TRUE)
+                                        ),
+                                        conditionalPanel(condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
+                                                         div(class = "filter-row",
+                                                             selectInput("facets_per_row", "Facets per row", c("1" = 1, "2" = 2, "3" = 3, "4" = 4), 3),
+                                                             selectInput("facet_row_height", "Height per facet", c("Compact" = 225, "Standard" = 300, "Tall" = 450, "Extra tall" = 600), 450)
+                                                         ),
+                                                         div(class = "filter-row",
+                                                             selectInput("violin_facets_per_page", "Facets per page", c("8" = 8, "12" = 12, "20" = 20, "All" = "all"), 12),
+                                                             uiOutput("violin_page_control")
+                                                         )
+                                        ),
+                                        conditionalPanel(condition = "input.plot_type == 'violin'",
+                                                         selectInput("violin_display", "Distribution display", c("Violin" = "violin", "Boxplot" = "boxplot"), "violin"),
+                                                         checkboxInput("show_violin_points", "Show individual observations", TRUE)
+                                        ),
+                                        conditionalPanel(condition = "input.plot_type != 'correlation'",
+                                                         conditionalPanel(condition = "input.trajectory_measure == 'expression' || input.plot_type == 'dot'",
+                                                                          checkboxInput("log_scale", "Plot ln(CP10K+1)", TRUE)
+                                                         ),
+                                                         div(class = "expression-scale-row",
+                                                             numericInput("expression_minimum", "Minimum Expr", 0, min = 0),
+                                                             numericInput("expression_maximum", "Maximum Expr", 1, min = 0)
+                                                         ),
+                                                         conditionalPanel(condition = "input.plot_type == 'dot'",
+                                                                          div(class = "expression-scale-row",
+                                                                              numericInput("dot_size_minimum", "Min. dot size", 1, min = 0, step = 0.5),
+                                                                              numericInput("dot_size_maximum", "Max. dot size", 9, min = 0.5, step = 0.5)
+                                                                          )
+                                                         ),
+                                                         conditionalPanel(condition = "input.plot_type == 'heatmap'",
+                                                                          checkboxInput("show_heatmap_counts", "Show number of observations", TRUE)
+                                                         )
+                                        ),
+                                        conditionalPanel(condition = "input.plot_type == 'correlation'",
+                                                         div(class = "expression-scale-row",
+                                                             numericInput("correlation_axis_minimum", "Minimum Expr", 0, min = 0),
+                                                             numericInput("correlation_axis_maximum", "Maximum Expr", 1, min = 0)
+                                                         ),
+                                                         checkboxInput("show_orthogonal_fit", "Show orthogonal fit line", TRUE),
+                                                         div(class = "expression-scale-row",
+                                                             numericInput("correlation_size_minimum", "Min. dot size", 1.5, min = 0, step = 0.5),
+                                                             numericInput("correlation_size_maximum", "Max. dot size", 7, min = 0.5, step = 0.5)
+                                                         )
+                                        ),
+                                        actionButton("make_plot_bottom", "Generate plot", class = "btn-primary mt-1", width = "100%")
+                           )
           )
         )
       ),
@@ -1547,6 +1361,7 @@ ui <- function(request) {
       
       h4(
         "Contribute",
+        class = "section-major",
         style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
       ),
       div(
@@ -1555,7 +1370,7 @@ ui <- function(request) {
           "align-items: stretch; margin-bottom: 1px;"
         ),
         tags$a(
-          href = "mailto:jeremym@alleninstitute.org?body=''&subject='Dev mouse' app comments",
+          href = 'mailto:jeremym@alleninstitute.org?subject=Developing%20Mouse%20Visual%20Cortex%20Gene%20Expression%20Viewer',
           icon("envelope", lib = "font-awesome"),
           tags$span("PROVIDE FEEDBACK"),
           style = paste(
@@ -1591,6 +1406,7 @@ ui <- function(request) {
       ),
       h4(
         "Acknowledgements",
+        class = "section-minor",
         style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
       ),
       p(
@@ -1621,6 +1437,7 @@ ui <- function(request) {
         "Select gene of interest",
         div(
           class = "gene-table-panel",
+          p("Search, sort, and filter by gene; select a row; then click 'Get gene data' on the left."),
           DT::DTOutput("gene_statistics_table"),
           tags$hr(),
           p(
@@ -1692,6 +1509,35 @@ ui <- function(request) {
             class = "expression-title",
             textOutput("plot_title")
           ),
+          conditionalPanel(
+            condition = "output.plot_pagination_visible",
+            div(
+              class = "plot-page-navigation",
+              style = paste(
+                "display: flex; align-items: center; flex-wrap: wrap;",
+                "gap: 10px; padding: 8px 12px; background: #f3f4f6;"
+              ),
+              conditionalPanel(
+                condition = "output.plot_has_previous_page",
+                actionButton(
+                  "plot_previous_page",
+                  "Go to previous page",
+                  icon = icon("chevron-left"),
+                  class = "btn-outline-primary btn-sm"
+                )
+              ),
+              textOutput("plot_page_label", inline = TRUE),
+              conditionalPanel(
+                condition = "output.plot_has_next_page",
+                actionButton(
+                  "plot_next_page",
+                  "Go to next page",
+                  icon = icon("chevron-right"),
+                  class = "btn-outline-primary btn-sm"
+                )
+              )
+            )
+          ),
           div(
             class = "plot-wrapper",
             shinycssloaders::withSpinner(
@@ -1754,7 +1600,7 @@ server <- function(input, output, session) {
   pending_bookmark_state <- reactiveVal(NULL)
   restored_filter_values <- reactiveVal(NULL)
   restore_plot_pending <- reactiveVal(FALSE)
-  bookmark_schema_version <- 1L
+  bookmark_schema_version <- 2L
   
   bookmark_excluded_inputs <- unique(c(
     "gene",
@@ -1784,6 +1630,7 @@ server <- function(input, output, session) {
     "dot_size_maximum",
     "show_heatmap_counts",
     "show_points",
+    "show_fit_error",
     "violin_display",
     "violin_facets_per_page",
     "violin_page",
@@ -1797,6 +1644,9 @@ server <- function(input, output, session) {
     "get_gene_data",
     "get_comparison_gene_data",
     "make_plot",
+    "make_plot_bottom",
+    "plot_previous_page",
+    "plot_next_page",
     "reset_defaults",
     "share_view",
     "bookmarked_url",
@@ -1837,6 +1687,23 @@ server <- function(input, output, session) {
       omit_zero_values = isolate(input$omit_zero_values),
       plot_type = isolate(input$plot_type),
       trajectory_measure = isolate(input$trajectory_measure),
+      facet_by = if (identical(isolate(input$plot_type), "trajectory")) {
+        isolate(input$facet_variable)
+      } else if (identical(isolate(input$plot_type), "violin")) {
+        isolate(input$second_dimension)
+      } else {
+        NULL
+      },
+      scale_minimum = if (identical(isolate(input$plot_type), "correlation")) {
+        isolate(input$correlation_axis_minimum)
+      } else {
+        isolate(input$expression_minimum)
+      },
+      scale_maximum = if (identical(isolate(input$plot_type), "correlation")) {
+        isolate(input$correlation_axis_maximum)
+      } else {
+        isolate(input$expression_maximum)
+      },
       progression_variable = isolate(input$progression_variable),
       facet_variable = isolate(input$facet_variable),
       color_variable = isolate(input$color_variable),
@@ -1868,6 +1735,7 @@ server <- function(input, output, session) {
       dot_size_maximum = isolate(input$dot_size_maximum),
       show_heatmap_counts = isolate(input$show_heatmap_counts),
       show_points = isolate(input$show_points),
+      show_fit_error = isolate(input$show_fit_error),
       violin_display = isolate(input$violin_display),
       violin_facets_per_page = isolate(input$violin_facets_per_page),
       violin_page = isolate(input$violin_page),
@@ -1879,6 +1747,22 @@ server <- function(input, output, session) {
   
   onRestore(function(state) {
     saved <- state$values$viewer_state
+    if (!is.null(saved) && (is.null(saved$schema_version) || as.integer(saved$schema_version) < 2L)) {
+      convert_limits <- function(x, logged) {
+        if (is.null(x)) return(NULL)
+        x <- suppressWarnings(as.numeric(x))
+        if (logged) log1p(expm1(x) / 100) else x / 100
+      }
+      if (!identical(saved$trajectory_measure, "fraction") || identical(saved$plot_type, "dot")) {
+        saved$expression_minimum <- convert_limits(saved$expression_minimum, isTRUE(saved$log_scale))
+        saved$expression_maximum <- convert_limits(saved$expression_maximum, isTRUE(saved$log_scale))
+      }
+      if (!identical(saved$trajectory_measure, "fraction")) {
+        saved$correlation_axis_minimum <- convert_limits(saved$correlation_axis_minimum, TRUE)
+        saved$correlation_axis_maximum <- convert_limits(saved$correlation_axis_maximum, TRUE)
+      }
+      if (is.null(saved$show_fit_error)) saved$show_fit_error <- TRUE
+    }
     pending_bookmark_state(saved)
     if (!is.null(saved)) {
       saved_fields <- as.character(saved$filter_fields)
@@ -1890,6 +1774,49 @@ server <- function(input, output, session) {
       restore_plot_pending(TRUE)
     }
   })
+  
+  restore_permalink_plot_controls <- function(saved) {
+    if (is.null(saved)) return(invisible(NULL))
+    saved_plot_type <- as.character(saved$plot_type)[1]
+    saved_facet <- saved$facet_by
+    if (is.null(saved_facet)) {
+      saved_facet <- if (identical(saved_plot_type, "trajectory")) {
+        saved$facet_variable
+      } else if (identical(saved_plot_type, "violin")) {
+        saved$second_dimension
+      } else {
+        NULL
+      }
+    }
+    saved_facet <- as.character(saved_facet)[1]
+    if (!is.na(saved_facet) && nzchar(saved_facet)) {
+      if (identical(saved_plot_type, "trajectory")) {
+        updateSelectInput(session, "facet_variable", selected = saved_facet)
+      } else if (identical(saved_plot_type, "violin")) {
+        updateSelectInput(session, "second_dimension", selected = saved_facet)
+      }
+    }
+    saved_minimum <- saved$scale_minimum
+    saved_maximum <- saved$scale_maximum
+    if (is.null(saved_minimum)) {
+      saved_minimum <- if (identical(saved_plot_type, "correlation")) saved$correlation_axis_minimum else saved$expression_minimum
+    }
+    if (is.null(saved_maximum)) {
+      saved_maximum <- if (identical(saved_plot_type, "correlation")) saved$correlation_axis_maximum else saved$expression_maximum
+    }
+    saved_minimum <- suppressWarnings(as.numeric(saved_minimum)[1])
+    saved_maximum <- suppressWarnings(as.numeric(saved_maximum)[1])
+    if (is.finite(saved_minimum) && is.finite(saved_maximum) && saved_minimum < saved_maximum) {
+      if (identical(saved_plot_type, "correlation")) {
+        updateNumericInput(session, "correlation_axis_minimum", value = saved_minimum)
+        updateNumericInput(session, "correlation_axis_maximum", value = saved_maximum)
+      } else {
+        updateNumericInput(session, "expression_minimum", value = saved_minimum)
+        updateNumericInput(session, "expression_maximum", value = saved_maximum)
+      }
+    }
+    invisible(NULL)
+  }
   
   onBookmarked(function(url) {
     showModal(modalDialog(
@@ -1924,6 +1851,13 @@ server <- function(input, output, session) {
     }
     session$doBookmark()
   }, ignoreInit = TRUE)
+  
+  output$comparison_gene_loaded <- reactive({
+    !is.null(comparison_gene_data()) &&
+      identical(input$comparison_gene, loaded_comparison_gene()) &&
+      !identical(loaded_gene(), loaded_comparison_gene())
+  })
+  outputOptions(output, "comparison_gene_loaded", suspendWhenHidden = FALSE)
   
   output$gene_loaded <- reactive({
     !is.null(gene_data()) &&
@@ -2032,14 +1966,14 @@ server <- function(input, output, session) {
         target = "row"
       ),
       options = list(
-        pageLength = 10,
-        lengthMenu = c(10, 20, 50, 100),
+        pageLength = 5,
+        lengthMenu = c(5, 10, 20, 50),
         scrollX = TRUE,
         autoWidth = TRUE,
         stateSave = FALSE,
         searchHighlight = TRUE,
         order = list(
-          list(first_numeric_index, "desc")
+          list(if ("log2fc_subclass" %in% names(table_data)) match("log2fc_subclass", names(table_data)) - 1L else first_numeric_index, "desc")
         ),
         initComplete = DT::JS(
           "function(settings, json) {",
@@ -2059,20 +1993,6 @@ server <- function(input, output, session) {
           "    }",
           "  });",
           "}"
-        ),
-        columnDefs = list(
-          list(
-            targets = gene_column_index,
-            render = DT::JS(
-              "function(data, type, row, meta) {",
-              "  if (type !== 'display' || data === null || data === '') return data;",
-              "  var gene = String(data);",
-              "  var href = 'https://www.genecards.org/card/' + encodeURIComponent(gene);",
-              "  var label = $('<div>').text(gene).html();",
-              "  return '<a href=\"' + href + '\" target=\"_blank\" rel=\"noopener noreferrer\">' + label + '</a>';",
-              "}"
-            )
-          )
         )
       ),
       class = "compact stripe hover"
@@ -2144,7 +2064,7 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
   
-  read_gene <- function(gene_symbol) {
+  read_gene_once <- function(gene_symbol) {
     cache_key <- make_cache_key(gene_symbol)
     cached <- gene_cache$get(cache_key, missing = NULL)
     if (!is.null(cached)) return(cached)
@@ -2225,7 +2145,7 @@ server <- function(input, output, session) {
           number_of_cells_expressing / number_of_cells,
           NA_real_
         ),
-        CPM = summed_counts * CPM_scaling_factor
+        CP10K = summed_counts * (CPM_scaling_factor / 100)
       )
     
     if (nrow(joined) == 0) {
@@ -2234,6 +2154,28 @@ server <- function(input, output, session) {
     
     gene_cache$set(cache_key, joined)
     joined
+  }
+  
+  read_gene <- function(gene_symbol) {
+    for (attempt in seq_len(3L)) {
+      result <- tryCatch(
+        withCallingHandlers(
+          read_gene_once(gene_symbol),
+          warning = function(w) {
+            if (grepl("ignoring SIGPIPE signal", conditionMessage(w), fixed = TRUE)) {
+              message("Gene read warning: ", conditionMessage(w))
+              invokeRestart("muffleWarning")
+            }
+          }
+        ),
+        error = function(e) e
+      )
+      if (!inherits(result, "error")) return(result)
+      if (!grepl("SIGPIPE", conditionMessage(result), fixed = TRUE) || attempt == 3L) {
+        stop(result)
+      }
+      message("Retrying interrupted gene read (attempt ", attempt + 1L, ").")
+    }
   }
   
   observeEvent(input$get_gene_data, {
@@ -2321,9 +2263,20 @@ server <- function(input, output, session) {
       href = url,
       target = "_blank",
       rel = "noopener noreferrer",
-      class = "btn btn-outline-primary w-100",
+      class = "btn sidebar-secondary w-100",
       icon("arrow-up-right-from-square"),
       "Plot in ABC Atlas"
+    )
+  })
+  
+  output$genecards_button <- renderUI({
+    gene <- loaded_gene()
+    req(gene_data(), gene)
+    tags$a(
+      href = paste0("https://www.genecards.org/card/", utils::URLencode(gene, reserved = TRUE)),
+      target = "_blank", rel = "noopener noreferrer",
+      class = "btn sidebar-secondary w-100",
+      "GeneCards"
     )
   })
   
@@ -2445,9 +2398,9 @@ server <- function(input, output, session) {
     ) {
       filtered$fraction_expressing
     } else if (isTRUE(input$log_scale)) {
-      log1p(filtered$CPM)
+      log1p(filtered$CP10K)
     } else {
-      filtered$CPM
+      filtered$CP10K
     }
     values <- values[is.finite(values)]
     validate(need(
@@ -2457,36 +2410,57 @@ server <- function(input, output, session) {
     
     c(
       minimum = 0,
-      maximum = if (
-        identical(input$plot_type, "trajectory") &&
-        identical(input$trajectory_measure, "fraction")
-      ) {
-        1
+      maximum = if (input$plot_type %in% c("trajectory", "violin")) {
+        max(round(as.numeric(stats::quantile(values, 0.99, na.rm = TRUE, names = FALSE)), 3), 0.001)
       } else {
-        max(values, na.rm = TRUE)
+        max(as.numeric(stats::quantile(values, 0.97, na.rm = TRUE, names = FALSE)), 1e-6)
       }
     )
   })
   
   observeEvent(automatic_expression_range(), {
-    req(isTRUE(input$automatic_expression_limits))
+    if (isTRUE(restore_plot_pending())) return()
     limits <- automatic_expression_range()
     maximum <- max(limits[["maximum"]], .Machine$double.eps)
     updateNumericInput(
       session,
       "expression_minimum",
       value = limits[["minimum"]],
-      min = 0,
-      max = maximum
+      min = 0
     )
     updateNumericInput(
       session,
       "expression_maximum",
       value = maximum,
-      min = 0,
-      max = maximum
+      min = 0
     )
   }, ignoreInit = TRUE)
+  
+  observeEvent(list(input$trajectory_measure, input$plot_type), {
+    fraction <- identical(input$trajectory_measure, "fraction") && !identical(input$plot_type, "dot")
+    updateNumericInput(session, "expression_minimum", label = if (fraction) "Minimum Frac" else "Minimum Expr")
+    updateNumericInput(session, "expression_maximum", label = if (fraction) "Maximum Frac" else "Maximum Expr")
+  }, ignoreInit = FALSE)
+  
+  observeEvent(list(gene_data(), comparison_gene_data(), input$trajectory_measure,
+                    input$plot_type, active_filter_specification(), input$omit_zero_values), {
+                      req(identical(input$plot_type, "correlation"), gene_data(), comparison_gene_data())
+                      if (isTRUE(restore_plot_pending())) return()
+                      d <- inner_join(gene_data(), comparison_gene_data() |> select(sample_id, comparison_CP10K = CP10K,
+                                                                                    comparison_fraction = fraction_expressing), by = "sample_id")
+                      d <- apply_filter_specification(d, active_filter_specification())
+                      if (isTRUE(input$omit_zero_values)) d <- d |> filter(CP10K > 0, comparison_CP10K > 0)
+                      fraction <- identical(input$trajectory_measure, "fraction")
+                      x <- if (fraction) d$fraction_expressing else log1p(d$CP10K)
+                      y <- if (fraction) d$comparison_fraction else log1p(d$comparison_CP10K)
+                      valid <- is.finite(x) & is.finite(y)
+                      req(any(valid))
+                      maximum <- max(round(as.numeric(quantile(c(x[valid], y[valid]), 0.99, names = FALSE)), 3), 0.001)
+                      updateNumericInput(session, "correlation_axis_minimum", value = 0,
+                                         label = if (fraction) "Minimum Frac" else "Minimum Expr")
+                      updateNumericInput(session, "correlation_axis_maximum", value = maximum,
+                                         label = if (fraction) "Maximum Frac" else "Maximum Expr")
+                    }, ignoreInit = TRUE)
   
   output$stacked_filter_controls <- renderUI({
     selected_fields <- input$filter_fields
@@ -2681,14 +2655,50 @@ server <- function(input, output, session) {
     req(filters_ready)
     
     restored_filter_values(NULL)
-    restore_plot_pending(FALSE)
-    bookmark_plot_trigger(isolate(bookmark_plot_trigger()) + 1L)
-    bslib::nav_select(
-      id = "main_tabs",
-      selected = "Plot gene of interest",
-      session = session
-    )
-    pending_bookmark_state(NULL)
+    restore_permalink_plot_controls(saved)
+    session$onFlushed(function() {
+      # onFlushed is not a reactive consumer. isolate() is required because
+      # capture_plot_settings() reads several reactive input values.
+      restored_settings <- isolate(capture_plot_settings())
+      restored_plot_type <- as.character(saved$plot_type)[1]
+      saved_facet <- saved$facet_by
+      if (is.null(saved_facet)) {
+        saved_facet <- if (identical(restored_plot_type, "trajectory")) {
+          saved$facet_variable
+        } else if (identical(restored_plot_type, "violin")) {
+          saved$second_dimension
+        } else {
+          NULL
+        }
+      }
+      saved_facet <- as.character(saved_facet)[1]
+      if (!is.na(saved_facet) && nzchar(saved_facet)) {
+        if (identical(restored_plot_type, "trajectory")) {
+          restored_settings$facet_variable <- saved_facet
+        } else if (identical(restored_plot_type, "violin")) {
+          restored_settings$second_dimension <- saved_facet
+        }
+      }
+      saved_minimum <- saved$scale_minimum
+      saved_maximum <- saved$scale_maximum
+      if (is.null(saved_minimum)) saved_minimum <- if (identical(restored_plot_type, "correlation")) saved$correlation_axis_minimum else saved$expression_minimum
+      if (is.null(saved_maximum)) saved_maximum <- if (identical(restored_plot_type, "correlation")) saved$correlation_axis_maximum else saved$expression_maximum
+      saved_minimum <- suppressWarnings(as.numeric(saved_minimum)[1])
+      saved_maximum <- suppressWarnings(as.numeric(saved_maximum)[1])
+      if (is.finite(saved_minimum) && is.finite(saved_maximum) && saved_minimum < saved_maximum) {
+        if (identical(restored_plot_type, "correlation")) {
+          restored_settings$correlation_axis_minimum <- saved_minimum
+          restored_settings$correlation_axis_maximum <- saved_maximum
+        } else {
+          restored_settings$expression_minimum <- saved_minimum
+          restored_settings$expression_maximum <- saved_maximum
+        }
+      }
+      restore_plot_pending(FALSE)
+      plot_settings(restored_settings)
+      bslib::nav_select(id = "main_tabs", selected = "Plot gene of interest", session = session)
+      pending_bookmark_state(NULL)
+    }, once = TRUE)
   }, priority = -100)
   
   control_metadata <- reactive({
@@ -2759,9 +2769,9 @@ server <- function(input, output, session) {
     current_correlation_color <- isolate(input$correlation_color_variable)
     if (!current_correlation_color %in% unname(color_choices)) {
       current_correlation_color <- if (
-        default_color %in% unname(color_choices)
+        default_correlation_color %in% unname(color_choices)
       ) {
-        default_color
+        default_correlation_color
       } else {
         "none"
       }
@@ -2821,8 +2831,13 @@ server <- function(input, output, session) {
       )
       
       second_choices <- setdiff(dimension_choices, current_x)
+      if (identical(input$plot_type, "violin")) {
+        second_choices <- c("All data" = "none", second_choices)
+      }
       
-      if (
+      if (plot_type_changed && identical(input$plot_type, "violin")) {
+        current_second <- "none"
+      } else if (
         plot_type_changed &&
         input$plot_type %in% c("heatmap", "dot") &&
         default_second %in% second_choices
@@ -2848,6 +2863,7 @@ server <- function(input, output, session) {
       updateSelectInput(
         session,
         "second_dimension",
+        label = if (identical(input$plot_type, "violin")) "Facet by" else "Vertical axis",
         choices = second_choices,
         selected = current_second
       )
@@ -2918,11 +2934,6 @@ server <- function(input, output, session) {
       "correlation_color_variable",
       selected = as.character(saved$correlation_color_variable)[1]
     )
-    updateCheckboxInput(
-      session,
-      "correlation_automatic_limits",
-      value = isTRUE(saved$correlation_automatic_limits)
-    )
     updateNumericInput(
       session,
       "correlation_axis_minimum",
@@ -2953,11 +2964,7 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session, "log_scale", value = isTRUE(saved$log_scale)
     )
-    updateCheckboxInput(
-      session,
-      "automatic_expression_limits",
-      value = isTRUE(saved$automatic_expression_limits)
-    )
+    restore_permalink_plot_controls(saved)
     updateNumericInput(
       session,
       "expression_minimum",
@@ -2988,6 +2995,7 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session, "show_points", value = isTRUE(saved$show_points)
     )
+    updateCheckboxInput(session, "show_fit_error", value = isTRUE(saved$show_fit_error))
     if (!is.null(saved$violin_display)) {
       updateSelectInput(session, "violin_display", selected = saved$violin_display)
     }
@@ -3160,11 +3168,6 @@ server <- function(input, output, session) {
     )
     updateCheckboxInput(session, "omit_zero_values", value = FALSE)
     updateCheckboxInput(session, "log_scale", value = TRUE)
-    updateCheckboxInput(
-      session,
-      "automatic_expression_limits",
-      value = TRUE
-    )
     updateNumericInput(session, "dot_size_minimum", value = 1)
     updateNumericInput(session, "dot_size_maximum", value = 9)
     updateCheckboxInput(
@@ -3174,18 +3177,13 @@ server <- function(input, output, session) {
     )
     updateSelectInput(session, "plot_type", selected = "trajectory")
     updateSelectInput(session, "trajectory_measure", selected = "expression")
-    updateSelectInput(session, "progression_variable", selected = age_field)
+    updateSelectInput(session, "progression_variable", selected = default_progression)
     updateSelectInput(session, "facet_variable", selected = default_facet)
     updateSelectInput(session, "color_variable", selected = default_color)
     updateSelectInput(
       session,
       "correlation_color_variable",
-      selected = default_color
-    )
-    updateCheckboxInput(
-      session,
-      "correlation_automatic_limits",
-      value = TRUE
+      selected = default_correlation_color
     )
     updateCheckboxInput(
       session,
@@ -3194,14 +3192,15 @@ server <- function(input, output, session) {
     )
     updateNumericInput(session, "correlation_size_minimum", value = 1.5)
     updateNumericInput(session, "correlation_size_maximum", value = 7)
-    updateSelectInput(session, "smoother", selected = "loess")
+    updateSelectInput(session, "smoother", selected = "lm")
     updateCheckboxInput(session, "show_points", value = TRUE)
+    updateCheckboxInput(session, "show_fit_error", value = TRUE)
     updateSelectInput(session, "violin_display", selected = "violin")
     updateSelectInput(session, "violin_facets_per_page", selected = "12")
     updateSelectInput(session, "violin_page", selected = "1")
     updateCheckboxInput(session, "show_violin_points", value = TRUE)
     updateSelectInput(session, "facets_per_row", selected = "3")
-    updateSelectInput(session, "facet_row_height", selected = "300")
+    updateSelectInput(session, "facet_row_height", selected = "450")
     updateSelectInput(session, "x_variable", selected = default_x)
     updateSelectInput(session, "second_dimension", selected = default_second)
   })
@@ -3214,6 +3213,7 @@ server <- function(input, output, session) {
     
     if (identical(input$plot_type, "correlation")) {
       req(comparison_gene_data(), loaded_comparison_gene())
+      validate(need(identical(input$comparison_gene, loaded_comparison_gene()), "Retrieve the selected comparison gene before generating the plot."))
       
       validate(
         need(
@@ -3232,9 +3232,7 @@ server <- function(input, output, session) {
       filters = active_filter_specification(),
       omit_zero_values = isTRUE(input$omit_zero_values),
       log_scale = isTRUE(input$log_scale),
-      automatic_expression_limits = isTRUE(
-        input$automatic_expression_limits
-      ),
+      automatic_expression_limits = FALSE,
       expression_minimum = input$expression_minimum,
       expression_maximum = input$expression_maximum,
       dot_size_minimum = input$dot_size_minimum,
@@ -3247,9 +3245,7 @@ server <- function(input, output, session) {
       color_variable = input$color_variable,
       correlation_color_variable =
         input$correlation_color_variable,
-      correlation_automatic_limits = isTRUE(
-        input$correlation_automatic_limits
-      ),
+      correlation_automatic_limits = FALSE,
       correlation_axis_minimum =
         input$correlation_axis_minimum,
       correlation_axis_maximum =
@@ -3262,6 +3258,7 @@ server <- function(input, output, session) {
       comparison_gene = loaded_comparison_gene(),
       smoother = input$smoother,
       show_points = isTRUE(input$show_points),
+      show_fit_error = isTRUE(input$show_fit_error),
       violin_display = if (
         is.null(input$violin_display) || length(input$violin_display) == 0
       ) "violin" else as.character(input$violin_display[[1]]),
@@ -3292,6 +3289,7 @@ server <- function(input, output, session) {
   observeEvent(
     list(
       input$make_plot,
+      input$make_plot_bottom,
       bookmark_plot_trigger()
     ),
     {
@@ -3358,7 +3356,7 @@ server <- function(input, output, session) {
       max(1L, parsed_per_page)
     }
     page_count <- max(1L, ceiling(number_of_facets / per_page))
-    current <- suppressWarnings(as.integer(input$violin_page))
+    current <- suppressWarnings(as.integer(isolate(input$violin_page)))
     if (
       length(current) == 0 ||
       !is.finite(current[[1]]) ||
@@ -3377,54 +3375,141 @@ server <- function(input, output, session) {
     )
   })
   
-  output$plot_size_css <- renderUI({
+  # Navigation uses the generated plot settings, not unsubmitted controls.
+  plot_pagination <- reactive({
     settings <- plot_settings()
-    if (is.null(settings)) return(NULL)
-    uses_facet_layout <- identical(settings$plot_type, "violin") ||
-      (identical(settings$plot_type, "trajectory") &&
-         !identical(settings$facet_variable, "none"))
-    if (!uses_facet_layout) {
-      return(tags$style(HTML(
-        ".plot-wrapper { overflow: hidden !important; } #expression_plot { height: 100% !important; }"
-      )))
+    if (
+      is.null(settings) ||
+      !settings$plot_type %in% c("trajectory", "violin") ||
+      !identical(input$plot_type, settings$plot_type)
+    ) {
+      return(NULL)
     }
     data <- filtered_data()
-    facet_field <- if (identical(settings$plot_type, "trajectory")) {
+    field <- if (identical(settings$plot_type, "trajectory")) {
       settings$facet_variable
     } else {
       settings$second_dimension
     }
-    number_of_facets <- dplyr::n_distinct(data[[facet_field]], na.rm = TRUE)
-    if (settings$plot_type %in% c("trajectory", "violin")) {
-      per_page_value <- settings$violin_facets_per_page
-      if (is.null(per_page_value) || length(per_page_value) == 0) {
-        per_page_value <- "12"
-      } else {
-        per_page_value <- as.character(per_page_value[[1]])
-      }
-      per_page <- if (identical(per_page_value, "all")) {
-        max(1L, number_of_facets)
-      } else {
-        parsed_per_page <- suppressWarnings(as.integer(per_page_value))
-        if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page[[1]])) {
-          parsed_per_page <- 12L
-        }
-        max(1L, parsed_per_page[[1]])
-      }
-      number_of_facets <- min(number_of_facets, per_page)
+    if (is.null(field) || identical(field, "none") || !field %in% names(data)) {
+      return(NULL)
     }
-    facets_per_row <- max(1L, as.integer(settings$facets_per_row))
-    facet_height <- max(150L, as.integer(settings$facet_row_height))
-    number_of_rows <- max(1L, ceiling(number_of_facets / facets_per_row))
-    plot_height <- number_of_rows * facet_height
-    tags$style(HTML(sprintf(
-      ".plot-wrapper { height: calc(90vh - 233px) !important; overflow-y: auto !important; overflow-x: hidden !important; } .plot-wrapper .shiny-spinner-output-container, .plot-wrapper .load-container { height: auto !important; min-height: %dpx !important; overflow: visible !important; } #expression_plot { height: %dpx !important; min-height: %dpx !important; }",
-      plot_height, plot_height, plot_height
-    )))
+    
+    # Match the observations used to select facets in each plot renderer.
+    if (identical(settings$plot_type, "trajectory")) {
+      progression_axis <- progression_positions(data, settings$progression_variable, maximum_step = 3)
+      progression <- unname(progression_axis$lookup[as.character(data[[settings$progression_variable]])])
+      data <- data[
+        is.finite(progression) & is.finite(data$plotted_expression) &
+          !is.na(data[[field]]),
+        , drop = FALSE
+      ]
+    } else {
+      data <- data |>
+        filter(
+          !is.na(.data[[settings$x_variable]]),
+          !is.na(.data[[field]]),
+          is.finite(plotted_expression)
+        ) |>
+        group_by(across(all_of(c(settings$x_variable, field)))) |>
+        filter(n() >= 2) |>
+        ungroup()
+    }
+    number_of_facets <- length(field_levels(data, field))
+    per_page_value <- as.character(settings$violin_facets_per_page)
+    if (length(per_page_value) != 1L || is.na(per_page_value)) {
+      per_page_value <- "12"
+    }
+    per_page <- if (identical(per_page_value, "all")) {
+      max(1L, number_of_facets)
+    } else {
+      parsed <- suppressWarnings(as.integer(per_page_value))
+      if (!is.finite(parsed)) parsed <- 12L
+      max(1L, parsed)
+    }
+    page_count <- max(1L, ceiling(number_of_facets / per_page))
+    page <- suppressWarnings(as.integer(settings$violin_page))
+    if (length(page) != 1L || !is.finite(page)) page <- 1L
+    page <- min(max(page, 1L), page_count)
+    list(page = page, page_count = page_count)
+  })
+  
+  output$plot_pagination_visible <- reactive({
+    pagination <- plot_pagination()
+    !is.null(pagination) && pagination$page_count > 1L
+  })
+  output$plot_has_previous_page <- reactive({
+    pagination <- plot_pagination()
+    !is.null(pagination) && pagination$page > 1L
+  })
+  output$plot_has_next_page <- reactive({
+    pagination <- plot_pagination()
+    !is.null(pagination) && pagination$page < pagination$page_count
+  })
+  for (output_id in c(
+    "plot_pagination_visible", "plot_has_previous_page", "plot_has_next_page"
+  )) {
+    outputOptions(output, output_id, suspendWhenHidden = FALSE)
+  }
+  output$plot_page_label <- renderText({
+    pagination <- plot_pagination()
+    req(pagination, pagination$page_count > 1L)
+    paste0("Page ", pagination$page, " of ", pagination$page_count)
+  })
+  
+  change_plot_page <- function(offset) {
+    pagination <- isolate(plot_pagination())
+    settings <- isolate(plot_settings())
+    if (is.null(pagination) || is.null(settings) || pagination$page_count <= 1L) {
+      return(invisible(NULL))
+    }
+    page <- min(max(pagination$page + offset, 1L), pagination$page_count)
+    if (page == pagination$page) return(invisible(NULL))
+    updateSelectInput(
+      session,
+      "violin_page",
+      choices = setNames(
+        seq_len(pagination$page_count),
+        paste0("Page ", seq_len(pagination$page_count), " of ", pagination$page_count)
+      ),
+      selected = as.character(page)
+    )
+    # Change only the page of the generated plot; preserve its other settings.
+    settings$violin_page <- as.integer(page)
+    plot_settings(settings)
+    invisible(NULL)
+  }
+  observeEvent(input$plot_previous_page, {
+    change_plot_page(-1L)
+  }, ignoreInit = TRUE)
+  observeEvent(input$plot_next_page, {
+    change_plot_page(1L)
+  }, ignoreInit = TRUE)
+  
+  plot_pixel_height <- reactive({
+    settings <- plot_settings()
+    req(settings)
+    if (!settings$plot_type %in% c("trajectory", "violin")) return(600L)
+    data <- filtered_data()
+    field <- if (identical(settings$plot_type, "trajectory")) settings$facet_variable else settings$second_dimension
+    if (identical(field, "none")) {
+      count <- 1L
+    } else {
+      count <- length(displayed_facet_levels(data, field, settings))
+    }
+    rows <- max(1L, ceiling(count / max(1L, settings$facets_per_row)))
+    rows * max(150L, settings$facet_row_height)
+  })
+  
+  output$plot_size_css <- renderUI({
+    tags$style(HTML(
+      ".plot-wrapper { overflow-y: auto !important; overflow-x: hidden !important; } .plot-wrapper .shiny-spinner-output-container, .plot-wrapper .load-container { height: auto !important; min-height: 0 !important; } #expression_plot { height: auto !important; min-height: 0 !important; } #expression_plot img { display: block; }"
+    ))
   })
   
   filtered_data <- reactive({
     settings <- plot_settings()
+    req(settings)
     data <- gene_data()
     req(data)
     
@@ -3459,9 +3544,9 @@ server <- function(input, output, session) {
         plotted_expression = if (use_fraction_measure) {
           fraction_expressing
         } else if (settings$log_scale) {
-          log1p(CPM)
+          log1p(CP10K)
         } else {
-          CPM
+          CP10K
         }
       )
   })
@@ -3696,6 +3781,7 @@ server <- function(input, output, session) {
   
   output$plot_statistics_note <- renderText({
     settings <- plot_settings()
+    req(settings)
     if(settings$plot_type %in% c("heatmap","dot")) {
       r <- matrix_autocorrelation()
       if (!isTRUE(r$available)) return(r$reason)
@@ -3847,7 +3933,7 @@ server <- function(input, output, session) {
     comparison_values <- comparison |>
       transmute(
         sample_id = as.character(sample_id),
-        comparison_CPM = as.numeric(CPM),
+        comparison_CP10K = as.numeric(CP10K),
         comparison_fraction_expressing = as.numeric(fraction_expressing)
       )
     
@@ -3856,7 +3942,7 @@ server <- function(input, output, session) {
     data <- apply_filter_specification(data, settings$filters)
     if (settings$omit_zero_values) {
       data <- data |>
-        filter(CPM > 0, comparison_CPM > 0)
+        filter(CP10K > 0, comparison_CP10K > 0)
     }
     use_fraction_measure <- identical(
       settings$trajectory_measure,
@@ -3874,12 +3960,12 @@ server <- function(input, output, session) {
         primary_expression = if (use_fraction_measure) {
           fraction_expressing
         } else {
-          log1p(CPM)
+          log1p(CP10K)
         },
         comparison_expression = if (use_fraction_measure) {
           comparison_fraction_expressing
         } else {
-          log1p(comparison_CPM)
+          log1p(comparison_CP10K)
         }
       ) |>
       filter(
@@ -3951,620 +4037,653 @@ server <- function(input, output, session) {
     settings <- plot_settings()
     data <- filtered_data()
     
-    y_label <- if (
-      settings$plot_type %in% c("trajectory", "heatmap", "violin") &&
-      identical(settings$trajectory_measure, "fraction")
-    ) {
-      "Fraction of cells expressing"
-    } else if (settings$log_scale) {
-      "ln(CPM + 1)"
-    } else {
-      "Counts per million"
-    }
-    
-    automatic_limits <- range(
-      data$plotted_expression,
-      finite = TRUE
-    )
-    automatic_limits[[1]] <- 0
-    expression_limits <- if (settings$automatic_expression_limits) {
-      automatic_limits
-    } else {
-      c(
-        suppressWarnings(as.numeric(settings$expression_minimum)),
-        suppressWarnings(as.numeric(settings$expression_maximum))
-      )
-    }
-    validate(need(
-      length(expression_limits) == 2 &&
-        all(is.finite(expression_limits)) &&
-        expression_limits[[1]] < expression_limits[[2]],
-      "The expression minimum must be smaller than the expression maximum."
-    ))
-    
-    if (settings$plot_type == "correlation") {
-      analysis <- correlation_analysis()
-      plot_data <- analysis$data
-      color_field <- settings$correlation_color_variable
-      color_enabled <- !identical(color_field, "none")
-      
-      if (color_enabled) {
-        plot_data <- factor_field(plot_data, color_field)
-        plot_data <- plot_data |>
-          filter(!is.na(.data[[color_field]]))
+    rendered_plot <- local({
+      y_label <- if (
+        settings$plot_type %in% c("trajectory", "heatmap", "violin") &&
+        identical(settings$trajectory_measure, "fraction")
+      ) {
+        "Fraction of cells expressing"
+      } else if (settings$log_scale) {
+        "ln(CP10K+1)"
       } else {
-        plot_data$correlation_color_group <- "All data"
-        color_field <- "correlation_color_group"
+        "CP10K"
       }
       
-      observed_limits <- range(
-        c(
-          plot_data$primary_expression,
-          plot_data$comparison_expression
-        ),
+      automatic_limits <- range(
+        data$plotted_expression,
         finite = TRUE
       )
-      observed_limits[[1]] <- min(0, observed_limits[[1]])
-      if (isTRUE(analysis$use_fraction_measure)) {
-        observed_limits <- c(0, 1)
-      }
-      correlation_limits <- if (settings$correlation_automatic_limits) {
-        observed_limits
+      automatic_limits[[1]] <- 0
+      expression_limits <- if (settings$automatic_expression_limits) {
+        automatic_limits
       } else {
         c(
-          suppressWarnings(as.numeric(settings$correlation_axis_minimum)),
-          suppressWarnings(as.numeric(settings$correlation_axis_maximum))
+          suppressWarnings(as.numeric(settings$expression_minimum)),
+          suppressWarnings(as.numeric(settings$expression_maximum))
         )
       }
-      validate(need(
-        length(correlation_limits) == 2 &&
-          all(is.finite(correlation_limits)) &&
-          correlation_limits[[1]] < correlation_limits[[2]],
-        "The correlation-axis minimum must be smaller than the maximum."
+      if (!identical(settings$plot_type, "correlation")) validate(need(
+        length(expression_limits) == 2 &&
+          all(is.finite(expression_limits)) &&
+          expression_limits[[1]] < expression_limits[[2]],
+        "The expression minimum must be smaller than the expression maximum."
       ))
       
-      correlation_size_limits <- c(
-        suppressWarnings(as.numeric(settings$correlation_size_minimum)),
-        suppressWarnings(as.numeric(settings$correlation_size_maximum))
-      )
-      validate(need(
-        length(correlation_size_limits) == 2 &&
-          all(is.finite(correlation_size_limits)) &&
-          correlation_size_limits[[1]] >= 0 &&
-          correlation_size_limits[[1]] < correlation_size_limits[[2]],
-        "Min. dot size must be nonnegative and smaller than Max. dot size."
-      ))
-      
-      point_mapping <- aes(
-        x = primary_expression,
-        y = comparison_expression,
-        color = .data[[color_field]]
-      )
-      use_cell_size <- "number_of_cells" %in% names(plot_data) &&
-        any(is.finite(suppressWarnings(as.numeric(plot_data$number_of_cells))))
-      if (use_cell_size) {
-        plot_data$point_size <- log10(
-          pmax(as.numeric(plot_data$number_of_cells), 1)
+      if (settings$plot_type == "correlation") {
+        analysis <- correlation_analysis()
+        plot_data <- analysis$data
+        color_field <- settings$correlation_color_variable
+        color_enabled <- !identical(color_field, "none")
+        
+        if (color_enabled) {
+          plot_data <- factor_field(plot_data, color_field)
+          plot_data <- plot_data |>
+            filter(!is.na(.data[[color_field]]))
+        } else {
+          plot_data$correlation_color_group <- "All data"
+          color_field <- "correlation_color_group"
+        }
+        
+        observed_limits <- range(
+          c(
+            plot_data$primary_expression,
+            plot_data$comparison_expression
+          ),
+          finite = TRUE
         )
+        observed_limits[[1]] <- min(0, observed_limits[[1]])
+        if (isTRUE(analysis$use_fraction_measure)) {
+          observed_limits <- c(0, 1)
+        }
+        correlation_limits <- if (settings$correlation_automatic_limits) {
+          observed_limits
+        } else {
+          c(
+            suppressWarnings(as.numeric(settings$correlation_axis_minimum)),
+            suppressWarnings(as.numeric(settings$correlation_axis_maximum))
+          )
+        }
+        validate(need(
+          length(correlation_limits) == 2 &&
+            all(is.finite(correlation_limits)) &&
+            correlation_limits[[1]] < correlation_limits[[2]],
+          "The correlation-axis minimum must be smaller than the maximum."
+        ))
+        
+        correlation_size_limits <- c(
+          suppressWarnings(as.numeric(settings$correlation_size_minimum)),
+          suppressWarnings(as.numeric(settings$correlation_size_maximum))
+        )
+        validate(need(
+          length(correlation_size_limits) == 2 &&
+            all(is.finite(correlation_size_limits)) &&
+            correlation_size_limits[[1]] >= 0 &&
+            correlation_size_limits[[1]] < correlation_size_limits[[2]],
+          "Min. dot size must be nonnegative and smaller than Max. dot size."
+        ))
+        
         point_mapping <- aes(
           x = primary_expression,
           y = comparison_expression,
-          color = .data[[color_field]],
-          size = point_size
+          color = .data[[color_field]]
         )
-      }
-      
-      plot <- ggplot(plot_data, point_mapping) +
-        geom_point(alpha = 0.68) +
-        coord_fixed(
-          ratio = 1,
-          xlim = correlation_limits,
-          ylim = correlation_limits,
-          expand = FALSE,
-          clip = "on"
-        ) +
-        labs(
-          x = if (isTRUE(analysis$use_fraction_measure)) {
-            paste0(loaded_gene(), " fraction expressing")
-          } else {
-            paste0("ln(", loaded_gene(), " CPM + 1)")
-          },
-          y = if (isTRUE(analysis$use_fraction_measure)) {
-            paste0(loaded_comparison_gene(), " fraction expressing")
-          } else {
-            paste0("ln(", loaded_comparison_gene(), " CPM + 1)")
-          },
-          color = if (color_enabled) color_field else NULL,
-          size = if (use_cell_size) "log10(number of cells)" else NULL
-        ) +
-        theme_minimal(base_size = 11) +
-        theme(
-          aspect.ratio = 1,
-          legend.position = if (color_enabled || use_cell_size) {
-            "bottom"
-          } else {
-            "none"
-          }
-        )
-      
-      if (settings$show_orthogonal_fit) {
-        fit <- orthogonal_fit(
-          plot_data$primary_expression,
-          plot_data$comparison_expression
-        )
-        if (!is.null(fit)) {
-          if (identical(fit$type, "vertical")) {
-            plot <- plot + geom_vline(
-              xintercept = fit$intercept,
-              color = "#111827",
-              linewidth = 0.9,
-              linetype = "solid"
-            )
-          } else {
-            plot <- plot + geom_abline(
-              slope = fit$slope,
-              intercept = fit$intercept,
-              color = "#111827",
-              linewidth = 0.9,
-              linetype = "solid"
-            )
+        use_cell_size <- "number_of_cells" %in% names(plot_data) &&
+          any(is.finite(suppressWarnings(as.numeric(plot_data$number_of_cells))))
+        if (use_cell_size) {
+          plot_data$point_size <- log10(
+            pmax(as.numeric(plot_data$number_of_cells), 1)
+          )
+          point_mapping <- aes(
+            x = primary_expression,
+            y = comparison_expression,
+            color = .data[[color_field]],
+            size = point_size
+          )
+        }
+        
+        plot <- ggplot(plot_data, point_mapping) +
+          geom_point(alpha = 0.68) +
+          coord_fixed(
+            ratio = 1,
+            xlim = correlation_limits,
+            ylim = correlation_limits,
+            expand = FALSE,
+            clip = "on"
+          ) +
+          labs(
+            x = if (isTRUE(analysis$use_fraction_measure)) {
+              paste0(loaded_gene(), " fraction expressing")
+            } else {
+              paste0(loaded_gene(), " ln(CP10K+1)")
+            },
+            y = if (isTRUE(analysis$use_fraction_measure)) {
+              paste0(loaded_comparison_gene(), " fraction expressing")
+            } else {
+              paste0(loaded_comparison_gene(), " ln(CP10K+1)")
+            },
+            color = if (color_enabled) color_field else NULL,
+            size = if (use_cell_size) "log10(number of cells)" else NULL
+          ) +
+          theme_minimal(base_size = 11) +
+          theme(
+            aspect.ratio = 1,
+            legend.position = if (color_enabled || use_cell_size) {
+              "bottom"
+            } else {
+              "none"
+            }
+          )
+        
+        if (settings$show_orthogonal_fit) {
+          fit <- orthogonal_fit(
+            plot_data$primary_expression,
+            plot_data$comparison_expression
+          )
+          if (!is.null(fit)) {
+            if (identical(fit$type, "vertical")) {
+              plot <- plot + geom_vline(
+                xintercept = fit$intercept,
+                color = "#111827",
+                linewidth = 0.9,
+                linetype = "solid"
+              )
+            } else {
+              plot <- plot + geom_abline(
+                slope = fit$slope,
+                intercept = fit$intercept,
+                color = "#111827",
+                linewidth = 0.9,
+                linetype = "solid"
+              )
+            }
           }
         }
-      }
-      
-      if (color_enabled) {
-        plot <- plot + manual_color_scale(plot_data, color_field, "color")
-      } else {
-        plot <- plot + scale_color_manual(
-          values = c("All data" = "#214E68"),
-          guide = "none"
+        
+        if (color_enabled) {
+          plot <- plot + manual_color_scale(plot_data, color_field, "color")
+        } else {
+          plot <- plot + scale_color_manual(
+            values = c("All data" = "#214E68"),
+            guide = "none"
+          )
+        }
+        if (use_cell_size) {
+          plot <- plot + scale_size_continuous(
+            range = correlation_size_limits
+          )
+        } else {
+          plot <- plot + guides(size = "none")
+        }
+        plot
+        
+      } else if (settings$plot_type == "trajectory") {
+        facet_enabled <- !identical(settings$facet_variable, "none")
+        color_enabled <- !identical(settings$color_variable, "none")
+        
+        if (facet_enabled) {
+          data <- factor_field(data, settings$facet_variable)
+        }
+        if (color_enabled) {
+          data <- factor_field(data, settings$color_variable)
+        } else {
+          data$plot_color_group <- "All data"
+        }
+        
+        progression <- progression_positions(
+          data,
+          settings$progression_variable,
+          maximum_step = 3
         )
-      }
-      if (use_cell_size) {
-        plot <- plot + scale_size_continuous(
-          range = correlation_size_limits
+        
+        data$progression_value <- unname(
+          progression$lookup[
+            as.character(data[[settings$progression_variable]])
+          ]
         )
-      } else {
-        plot <- plot + guides(size = "none")
-      }
-      plot
-      
-    } else if (settings$plot_type == "trajectory") {
-      facet_enabled <- !identical(settings$facet_variable, "none")
-      color_enabled <- !identical(settings$color_variable, "none")
-      
-      if (facet_enabled) {
-        data <- factor_field(data, settings$facet_variable)
-      }
-      if (color_enabled) {
-        data <- factor_field(data, settings$color_variable)
-      } else {
-        data$plot_color_group <- "All data"
-      }
-      
-      progression <- progression_positions(
-        data,
-        settings$progression_variable,
-        maximum_step = 3
-      )
-      
-      data$progression_value <- unname(
-        progression$lookup[
-          as.character(data[[settings$progression_variable]])
-        ]
-      )
-      
-      plot_data <- data |>
-        filter(
-          is.finite(progression_value),
-          is.finite(plotted_expression)
-        )
-      
-      if (facet_enabled) {
-        plot_data <- plot_data |>
-          filter(!is.na(.data[[settings$facet_variable]]))
-        displayed_facets <- displayed_facet_levels(
-          plot_data,
-          settings$facet_variable,
-          settings
-        )
-        plot_data <- plot_data |>
+        
+        plot_data <- data |>
           filter(
-            as.character(.data[[settings$facet_variable]]) %in%
-              displayed_facets
+            is.finite(progression_value),
+            is.finite(plotted_expression)
           )
-        plot_data[[settings$facet_variable]] <- factor(
-          as.character(plot_data[[settings$facet_variable]]),
-          levels = displayed_facets
+        
+        if (facet_enabled) {
+          plot_data <- plot_data |>
+            filter(!is.na(.data[[settings$facet_variable]]))
+          displayed_facets <- displayed_facet_levels(
+            plot_data,
+            settings$facet_variable,
+            settings
+          )
+          plot_data <- plot_data |>
+            filter(
+              as.character(.data[[settings$facet_variable]]) %in%
+                displayed_facets
+            )
+          plot_data[[settings$facet_variable]] <- factor(
+            as.character(plot_data[[settings$facet_variable]]),
+            levels = displayed_facets
+          )
+        }
+        if (color_enabled) {
+          plot_data <- plot_data |>
+            filter(!is.na(.data[[settings$color_variable]]))
+        }
+        
+        validate(
+          need(nrow(plot_data) >= 2, "Too few observations remain."),
+          need(
+            n_distinct(plot_data$progression_value) >= 2,
+            "At least two progression values are required."
+          )
         )
-      }
-      if (color_enabled) {
-        plot_data <- plot_data |>
-          filter(!is.na(.data[[settings$color_variable]]))
-      }
-      
-      validate(
-        need(nrow(plot_data) >= 2, "Too few observations remain."),
-        need(
-          n_distinct(plot_data$progression_value) >= 2,
-          "At least two progression values are required."
-        )
-      )
-      
-      color_field <- if (color_enabled) {
-        settings$color_variable
-      } else {
-        "plot_color_group"
-      }
-      
-      plot <- ggplot(
-        plot_data,
-        aes(
-          x = progression_value,
-          y = plotted_expression,
-          color = .data[[color_field]],
-          group = .data[[color_field]]
-        )
-      )
-      
-      if (settings$show_points) {
-        plot <- plot + geom_point(alpha = 0.42, size = 1.0)
-      }
-      if (settings$smoother == "loess") {
-        plot <- plot + geom_smooth(
-          method = "loess",
-          formula = y ~ x,
-          se = FALSE,
-          linewidth = 0.9,
-          na.rm = TRUE
-        )
-      } else if (settings$smoother == "lm") {
-        plot <- plot + geom_smooth(
-          method = "lm",
-          formula = y ~ x,
-          se = FALSE,
-          linewidth = 0.9,
-          na.rm = TRUE
-        )
-      }
-      
-      if (color_enabled) {
-        plot <- plot + manual_color_scale(
+        
+        color_field <- if (color_enabled) {
+          settings$color_variable
+        } else {
+          "plot_color_group"
+        }
+        
+        plot <- ggplot(
           plot_data,
-          settings$color_variable,
-          "color"
+          aes(
+            x = progression_value,
+            y = plotted_expression,
+            color = .data[[color_field]],
+            group = .data[[color_field]]
+          )
         )
-      } else {
-        plot <- plot + scale_color_manual(
-          values = c("All data" = "#214E68"),
+        
+        if (settings$show_points) {
+          plot <- plot + geom_point(alpha = 0.42, size = 1.0)
+        }
+        if (settings$smoother == "loess") {
+          plot <- plot + geom_smooth(
+            method = "loess",
+            formula = y ~ x,
+            mapping = aes(fill = .data[[color_field]]),
+            se = isTRUE(settings$show_fit_error),
+            level = 0.95,
+            alpha = 0.18,
+            linewidth = 0.9,
+            na.rm = TRUE
+          )
+        } else if (settings$smoother == "lm") {
+          plot <- plot + geom_smooth(
+            method = "lm",
+            formula = y ~ x,
+            mapping = aes(fill = .data[[color_field]]),
+            se = isTRUE(settings$show_fit_error),
+            level = 0.95,
+            alpha = 0.18,
+            linewidth = 0.9,
+            na.rm = TRUE
+          )
+        }
+        
+        if (color_enabled) {
+          plot <- plot + manual_color_scale(
+            plot_data,
+            settings$color_variable,
+            "color"
+          )
+        } else {
+          plot <- plot + scale_color_manual(
+            values = c("All data" = "#214E68"),
+            guide = "none"
+          )
+        }
+        
+        plot <- plot + scale_fill_manual(
+          values = if (color_enabled) field_colors(plot_data, color_field) else c("All data" = "#214E68"),
           guide = "none"
         )
-      }
-      
-      plot <- plot +
-        scale_x_continuous(
-          breaks = progression$breaks,
-          labels = progression$labels,
-          limits = progression$limits
-        ) +
-        scale_y_continuous(
-          limits = expression_limits,
-          oob = scales::squish
-        ) +
-        labs(
-          x = settings$progression_variable,
-          y = y_label,
-          color = if (color_enabled) settings$color_variable else NULL
-        ) +
-        theme_minimal(base_size = 11) +
-        theme(
-          axis.text.x = element_text(angle = 45, hjust = 1),
-          strip.text = element_text(face = "bold", size = 9),
-          legend.position = if (color_enabled) "bottom" else "none"
-        )
-      
-      if (facet_enabled) {
-        plot <- plot + facet_wrap(
-          vars(.data[[settings$facet_variable]]),
-          scales = "fixed",
-          ncol = settings$facets_per_row,
-          axes = "all_x",
-          axis.labels = "all_x",
-          drop = TRUE
-        )
-      }
-      
-      plot
-      
-    } else if (settings$plot_type == "heatmap") {
-      plot_data <- summarized_data()
-      midpoint <- mean(expression_limits)
-      plot_data <- plot_data |>
-        mutate(
-          count_text_color = if_else(
-            expression >= midpoint,
-            "white",
-            "black"
-          )
-        )
-      
-      plot <- ggplot(
-        plot_data,
-        aes(
-          x = .data[[settings$x_variable]],
-          y = .data[[settings$second_dimension]],
-          fill = expression
-        )
-      ) +
-        geom_tile(color = "white", linewidth = 0.2) +
-        scale_fill_viridis_c(
-          option = "C",
-          name = y_label,
-          limits = expression_limits,
-          oob = scales::squish
-        ) +
-        labs(x = settings$x_variable, y = settings$second_dimension) +
-        theme_minimal(base_size = 11) +
-        theme(
-          panel.grid = element_blank(),
-          axis.text.x = element_text(angle = 55, hjust = 1)
-        )
-      
-      if (settings$show_heatmap_counts) {
-        plot <- plot + geom_text(
-          aes(
-            label = n_observations,
-            color = count_text_color
-          ),
-          size = 3,
-          show.legend = FALSE
-        ) +
-          scale_color_identity()
-      }
-      
-      plot
-      
-    } else if (settings$plot_type == "dot") {
-      plot_data <- summarized_data() |>
-        mutate(
-          bounded_expression = scales::squish(expression, range = expression_limits),
-          size_expression = pmax(
-            if (settings$log_scale) bounded_expression else log1p(bounded_expression),
-            0.5
-          )
-        )
-      
-      dot_size_limits <- c(
-        suppressWarnings(as.numeric(settings$dot_size_minimum)),
-        suppressWarnings(as.numeric(settings$dot_size_maximum))
-      )
-      validate(need(
-        length(dot_size_limits) == 2 &&
-          all(is.finite(dot_size_limits)) &&
-          dot_size_limits[[1]] >= 0 &&
-          dot_size_limits[[1]] < dot_size_limits[[2]],
-        "Min. dot size must be nonnegative and smaller than Max. dot size."
-      ))
-      
-      use_fraction_expressing <-
-        "fraction_expressing" %in% names(plot_data) &&
-        any(is.finite(plot_data$fraction_expressing))
-      
-      if (use_fraction_expressing) {
-        size_break_fractions <- c(0, 0.25, 0.5, 0.75, 1)
-        plot_data <- plot_data |>
-          mutate(
-            dot_display_size = if_else(
-              is.finite(fraction_expressing),
-              sqrt(
-                dot_size_limits[[1]]^2 +
-                  scales::squish(fraction_expressing, c(0, 1)) *
-                  (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
-              ),
-              NA_real_
-            )
-          )
-        size_break_values <- sqrt(
-          dot_size_limits[[1]]^2 +
-            size_break_fractions *
-            (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
-        )
-        plot <- ggplot(
-          plot_data,
-          aes(
-            x = .data[[settings$x_variable]],
-            y = .data[[settings$second_dimension]],
-            color = expression,
-            size = dot_display_size
-          )
-        ) +
-          geom_point(alpha = 0.9, na.rm = TRUE) +
-          scale_size_identity(
-            name = "Cells expressing",
-            breaks = size_break_values,
-            labels = scales::percent(size_break_fractions),
-            guide = "legend"
-          )
-      } else {
-        plot <- ggplot(
-          plot_data,
-          aes(
-            x = .data[[settings$x_variable]],
-            y = .data[[settings$second_dimension]],
-            color = expression,
-            size = size_expression
-          )
-        ) +
-          geom_point(alpha = 0.9) +
-          scale_size_continuous(
-            name = "ln(CPM + 1)",
-            range = dot_size_limits,
+        plot <- plot +
+          scale_x_continuous(
+            breaks = progression$breaks,
+            labels = progression$labels,
+            limits = progression$limits
+          ) +
+          scale_y_continuous(
+            limits = expression_limits,
             oob = scales::squish
           ) +
-          labs(caption = paste(
-            "Fraction-expressing data are unavailable;",
-            "dot size represents expression."
-          ))
-      }
-      
-      plot +
-        scale_color_viridis_c(
-          option = "C",
-          name = y_label,
-          limits = expression_limits,
-          oob = scales::squish
-        ) +
-        labs(x = settings$x_variable, y = settings$second_dimension) +
-        theme_minimal(base_size = 11) +
-        theme(axis.text.x = element_text(angle = 55, hjust = 1))
-      
-    } else {
-      data <- factor_field(data, settings$x_variable)
-      data <- factor_field(data, settings$second_dimension)
-      all_plot_data <- data |>
-        filter(
-          !is.na(.data[[settings$x_variable]]),
-          !is.na(.data[[settings$second_dimension]]),
-          is.finite(plotted_expression)
-        ) |>
-        group_by(across(all_of(c(
-          settings$x_variable,
-          settings$second_dimension
-        )))) |>
-        filter(n() >= 2) |>
-        ungroup()
-      
-      validate(need(
-        nrow(all_plot_data) >= 2,
-        "No violin group has at least two observations."
-      ))
-      
-      facet_levels <- field_levels(
-        all_plot_data,
-        settings$second_dimension
-      )
-      facet_levels <- facet_levels[
-        facet_levels %in% as.character(all_plot_data[[settings$second_dimension]])
-      ]
-      per_page_value <- settings$violin_facets_per_page
-      if (
-        is.null(per_page_value) ||
-        length(per_page_value) == 0 ||
-        is.na(per_page_value[[1]])
-      ) {
-        per_page_value <- "12"
-      } else {
-        per_page_value <- as.character(per_page_value[[1]])
-      }
-      facets_per_page <- if (identical(per_page_value, "all")) {
-        max(1L, length(facet_levels))
-      } else {
-        parsed_per_page <- suppressWarnings(as.integer(per_page_value))
-        if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page[[1]])) {
-          parsed_per_page <- 12L
+          labs(
+            x = settings$progression_variable,
+            y = y_label,
+            color = if (color_enabled) settings$color_variable else NULL
+          ) +
+          theme_minimal(base_size = 11) +
+          theme(
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            strip.text = element_text(face = "bold", size = 9),
+            panel.spacing.x = grid::unit(0.08, "lines"),
+            plot.margin = margin(5, 5, 5, 5),
+            legend.position = if (color_enabled) "bottom" else "none"
+          )
+        
+        if (facet_enabled) {
+          plot <- plot + facet_wrap(
+            vars(.data[[settings$facet_variable]]),
+            scales = "fixed",
+            ncol = settings$facets_per_row,
+            dir = "h",
+            as.table = TRUE,
+            axes = "all_x",
+            axis.labels = "all_x",
+            drop = TRUE
+          )
         }
-        max(1L, parsed_per_page[[1]])
-      }
-      page_count <- max(1L, ceiling(length(facet_levels) / facets_per_page))
-      selected_page <- suppressWarnings(as.integer(settings$violin_page))
-      if (length(selected_page) == 0 || !is.finite(selected_page[[1]])) {
-        selected_page <- 1L
+        
+        plot
+        
+      } else if (settings$plot_type == "heatmap") {
+        plot_data <- summarized_data()
+        midpoint <- mean(expression_limits)
+        plot_data <- plot_data |>
+          mutate(
+            count_text_color = if_else(
+              expression >= midpoint,
+              "black",
+              "white"
+            )
+          )
+        
+        plot <- ggplot(
+          plot_data,
+          aes(
+            x = .data[[settings$x_variable]],
+            y = .data[[settings$second_dimension]],
+            fill = expression
+          )
+        ) +
+          geom_tile(color = "white", linewidth = 0.2) +
+          scale_fill_viridis_c(
+            option = "C",
+            name = y_label,
+            limits = expression_limits,
+            oob = scales::squish
+          ) +
+          labs(x = settings$x_variable, y = settings$second_dimension) +
+          theme_minimal(base_size = 11) +
+          theme(
+            panel.grid = element_blank(),
+            axis.text.x = element_text(angle = 55, hjust = 1)
+          )
+        
+        if (settings$show_heatmap_counts) {
+          plot <- plot + geom_text(
+            aes(
+              label = n_observations,
+              color = count_text_color
+            ),
+            size = 3,
+            show.legend = FALSE
+          ) +
+            scale_color_identity()
+        }
+        
+        plot
+        
+      } else if (settings$plot_type == "dot") {
+        plot_data <- summarized_data() |>
+          mutate(
+            bounded_expression = scales::squish(expression, range = expression_limits),
+            size_expression = pmax(
+              if (settings$log_scale) bounded_expression else log1p(bounded_expression),
+              0.5
+            )
+          )
+        
+        dot_size_limits <- c(
+          suppressWarnings(as.numeric(settings$dot_size_minimum)),
+          suppressWarnings(as.numeric(settings$dot_size_maximum))
+        )
+        validate(need(
+          length(dot_size_limits) == 2 &&
+            all(is.finite(dot_size_limits)) &&
+            dot_size_limits[[1]] >= 0 &&
+            dot_size_limits[[1]] < dot_size_limits[[2]],
+          "Min. dot size must be nonnegative and smaller than Max. dot size."
+        ))
+        
+        validate(need(
+          "fraction_expressing" %in% names(plot_data) &&
+            any(is.finite(plot_data$fraction_expressing)),
+          "Fraction-expressing data are unavailable for this gene."
+        ))
+        use_fraction_expressing <- TRUE
+        
+        if (use_fraction_expressing) {
+          size_break_fractions <- c(0, 0.25, 0.5, 0.75, 1)
+          plot_data <- plot_data |>
+            mutate(
+              dot_display_size = if_else(
+                is.finite(fraction_expressing),
+                sqrt(
+                  dot_size_limits[[1]]^2 +
+                    scales::squish(fraction_expressing, c(0, 1)) *
+                    (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
+                ),
+                NA_real_
+              )
+            )
+          size_break_values <- sqrt(
+            dot_size_limits[[1]]^2 +
+              size_break_fractions *
+              (dot_size_limits[[2]]^2 - dot_size_limits[[1]]^2)
+          )
+          plot <- ggplot(
+            plot_data,
+            aes(
+              x = .data[[settings$x_variable]],
+              y = .data[[settings$second_dimension]],
+              color = expression,
+              size = dot_display_size
+            )
+          ) +
+            geom_point(alpha = 0.9, na.rm = TRUE) +
+            scale_size_identity(
+              name = "Cells expressing",
+              breaks = size_break_values,
+              labels = scales::percent(size_break_fractions),
+              guide = "legend"
+            )
+        } else {
+          plot <- ggplot(
+            plot_data,
+            aes(
+              x = .data[[settings$x_variable]],
+              y = .data[[settings$second_dimension]],
+              color = expression,
+              size = size_expression
+            )
+          ) +
+            geom_point(alpha = 0.9) +
+            scale_size_continuous(
+              name = "ln(CP10K+1)",
+              range = dot_size_limits
+            ) +
+            labs(caption = paste(
+              "Fraction-expressing data are unavailable;",
+              "dot size represents expression."
+            ))
+        }
+        
+        plot +
+          scale_color_viridis_c(
+            option = "C",
+            name = y_label,
+            limits = expression_limits,
+            oob = scales::squish
+          ) +
+          labs(x = settings$x_variable, y = settings$second_dimension) +
+          theme_minimal(base_size = 11) +
+          theme(axis.text.x = element_text(angle = 55, hjust = 1))
+        
       } else {
-        selected_page <- selected_page[[1]]
+        data <- factor_field(data, settings$x_variable)
+        data <- factor_field(data, settings$second_dimension)
+        all_plot_data <- data |>
+          filter(
+            !is.na(.data[[settings$x_variable]]),
+            !is.na(.data[[settings$second_dimension]]),
+            is.finite(plotted_expression)
+          ) |>
+          group_by(across(all_of(c(
+            settings$x_variable,
+            settings$second_dimension
+          )))) |>
+          filter(n() >= 2) |>
+          ungroup()
+        
+        validate(need(
+          nrow(all_plot_data) >= 2,
+          "No violin group has at least two observations."
+        ))
+        
+        facet_levels <- field_levels(
+          all_plot_data,
+          settings$second_dimension
+        )
+        facet_levels <- facet_levels[
+          facet_levels %in% as.character(all_plot_data[[settings$second_dimension]])
+        ]
+        per_page_value <- settings$violin_facets_per_page
+        if (
+          is.null(per_page_value) ||
+          length(per_page_value) == 0 ||
+          is.na(per_page_value[[1]])
+        ) {
+          per_page_value <- "12"
+        } else {
+          per_page_value <- as.character(per_page_value[[1]])
+        }
+        facets_per_page <- if (identical(per_page_value, "all")) {
+          max(1L, length(facet_levels))
+        } else {
+          parsed_per_page <- suppressWarnings(as.integer(per_page_value))
+          if (length(parsed_per_page) == 0 || !is.finite(parsed_per_page[[1]])) {
+            parsed_per_page <- 12L
+          }
+          max(1L, parsed_per_page[[1]])
+        }
+        page_count <- max(1L, ceiling(length(facet_levels) / facets_per_page))
+        selected_page <- suppressWarnings(as.integer(settings$violin_page))
+        if (length(selected_page) == 0 || !is.finite(selected_page[[1]])) {
+          selected_page <- 1L
+        } else {
+          selected_page <- selected_page[[1]]
+        }
+        selected_page <- min(max(selected_page, 1L), page_count)
+        first_facet <- (selected_page - 1L) * facets_per_page + 1L
+        last_facet <- min(selected_page * facets_per_page, length(facet_levels))
+        displayed_facets <- facet_levels[seq.int(first_facet, last_facet)]
+        
+        plot_data <- all_plot_data |>
+          filter(
+            as.character(.data[[settings$second_dimension]]) %in% displayed_facets
+          )
+        plot_data[[settings$second_dimension]] <- factor(
+          as.character(plot_data[[settings$second_dimension]]),
+          levels = displayed_facets
+        )
+        
+        plot <- ggplot(
+          plot_data,
+          aes(
+            x = .data[[settings$x_variable]],
+            y = plotted_expression,
+            fill = .data[[settings$x_variable]]
+          )
+        )
+        
+        if (identical(settings$violin_display, "boxplot")) {
+          plot <- plot + geom_boxplot(
+            width = 0.65,
+            outlier.shape = NA,
+            color = "#214E68",
+            alpha = 0.75,
+            na.rm = TRUE
+          )
+        } else {
+          plot <- plot + geom_violin(
+            scale = "width",
+            trim = TRUE,
+            color = "#214E68",
+            alpha = 0.75,
+            na.rm = TRUE
+          )
+        }
+        
+        if (isTRUE(settings$show_violin_points)) {
+          plot <- plot + geom_jitter(
+            width = 0.10,
+            color = "black",
+            alpha = 0.20,
+            size = 0.35
+          )
+        }
+        
+        plot +
+          stat_summary(
+            fun.data = mean_se,
+            geom = "errorbar",
+            width = 0.18,
+            color = "black"
+          ) +
+          stat_summary(
+            fun = mean,
+            geom = "point",
+            shape = 21,
+            fill = "white",
+            color = "black",
+            size = 2
+          ) +
+          manual_color_scale(plot_data, settings$x_variable, "fill") +
+          facet_wrap(
+            vars(.data[[settings$second_dimension]]),
+            scales = "fixed",
+            ncol = settings$facets_per_row,
+            dir = "h",
+            as.table = TRUE,
+            axes = "all_x",
+            axis.labels = "all_x",
+            drop = TRUE
+          ) +
+          scale_y_continuous(
+            limits = expression_limits,
+            oob = scales::squish
+          ) +
+          labs(x = settings$x_variable, y = y_label) +
+          theme_minimal(base_size = 11) +
+          theme(
+            axis.text.x = element_text(angle = 55, hjust = 1, size = 7),
+            legend.position = "none",
+            strip.text = element_text(face = "bold", size = 9)
+          )
       }
-      selected_page <- min(max(selected_page, 1L), page_count)
-      first_facet <- (selected_page - 1L) * facets_per_page + 1L
-      last_facet <- min(selected_page * facets_per_page, length(facet_levels))
-      displayed_facets <- facet_levels[seq.int(first_facet, last_facet)]
-      
-      plot_data <- all_plot_data |>
-        filter(
-          as.character(.data[[settings$second_dimension]]) %in% displayed_facets
-        )
-      plot_data[[settings$second_dimension]] <- factor(
-        as.character(plot_data[[settings$second_dimension]]),
-        levels = displayed_facets
-      )
-      
-      plot <- ggplot(
-        plot_data,
-        aes(
-          x = .data[[settings$x_variable]],
-          y = plotted_expression,
-          fill = .data[[settings$x_variable]]
-        )
-      )
-      
-      if (identical(settings$violin_display, "boxplot")) {
-        plot <- plot + geom_boxplot(
-          width = 0.65,
-          outlier.shape = NA,
-          color = "#214E68",
-          alpha = 0.75,
-          na.rm = TRUE
-        )
-      } else {
-        plot <- plot + geom_violin(
-          scale = "width",
-          trim = TRUE,
-          color = "#214E68",
-          alpha = 0.75,
-          na.rm = TRUE
-        )
-      }
-      
-      if (isTRUE(settings$show_violin_points)) {
-        plot <- plot + geom_jitter(
-          width = 0.10,
-          color = "black",
-          alpha = 0.20,
-          size = 0.35
-        )
-      }
-      
-      plot +
-        stat_summary(
-          fun.data = mean_se,
-          geom = "errorbar",
-          width = 0.18,
-          color = "black"
-        ) +
-        stat_summary(
-          fun = mean,
-          geom = "point",
-          shape = 21,
-          fill = "white",
-          color = "black",
-          size = 2
-        ) +
-        manual_color_scale(plot_data, settings$x_variable, "fill") +
-        facet_wrap(
-          vars(.data[[settings$second_dimension]]),
-          scales = "fixed",
-          ncol = settings$facets_per_row,
-          axes = "all_x",
-          axis.labels = "all_x",
-          drop = TRUE
-        ) +
-        scale_y_continuous(
-          limits = expression_limits,
-          oob = scales::squish
-        ) +
-        labs(x = settings$x_variable, y = y_label) +
-        theme_minimal(base_size = 11) +
-        theme(
-          axis.text.x = element_text(angle = 55, hjust = 1, size = 7),
-          legend.position = "none",
-          strip.text = element_text(face = "bold", size = 9)
-        )
+    })
+    if (settings$plot_type %in% c("trajectory", "violin")) {
+      grob <- ggplot2::ggplotGrob(rendered_plot)
+      panel_columns <- unique(grob$layout$l[grepl("^panel", grob$layout$name)])
+      fraction_width <- min(1, max(1L, length(panel_columns)) / max(1L, settings$facets_per_row))
+      grid::grid.newpage()
+      grid::pushViewport(grid::viewport(x = 0, width = fraction_width, just = "left"))
+      grid::grid.draw(grob)
+      grid::popViewport()
+      invisible(NULL)
+    } else {
+      rendered_plot
     }
-  }, res = 96, execOnResize = FALSE)
+  }, height = function() plot_pixel_height(), res = 96, execOnResize = FALSE)
   
   output$plot_title <- renderText({
     if (is.null(loaded_gene())) {
       return("Retrieve a gene, then generate a plot")
     }
     settings <- plot_settings()
+    req(settings)
     zero_note <- if (settings$omit_zero_values) {
       "; zero-count observations removed"
     } else {
@@ -4623,7 +4742,7 @@ server <- function(input, output, session) {
         },
         settings$x_variable,
         " and ",
-        settings$second_dimension,
+        if (identical(settings$second_dimension, "none")) "All data" else settings$second_dimension,
         zero_note
       )
     }
