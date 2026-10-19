@@ -503,7 +503,7 @@ region_field <- first_existing(c(
 ))
 class_field <- first_existing(c("class", "class_label", "Class"))
 subclass_field <- first_existing(c("subclass", "subclass_label", "Subclass"))
-cluster_field <- first_existing(c("cluster_alias", "cluster", "cluster_label"))
+cluster_field <- first_existing(c("cluster", "cluster_label"))
 subcluster_field <- first_existing(c(
   "subcluster_alias", "subcluster", "subcluster_label"
 ))
@@ -515,7 +515,7 @@ if (is.na(region_field)) {
   stop("No brain-region field was found in obs_metadata.parquet.")
 }
 if (is.na(cluster_field)) {
-  stop("No cluster field was found in obs_metadata.parquet.")
+  cluster_field <- if (!is.na(subcluster_field)) subcluster_field else subclass_field
 }
 
 preferred_fields <- unique(c(
@@ -537,7 +537,8 @@ preferred_fields <- unique(c(
 
 preferred_fields <- preferred_fields[
   !is.na(preferred_fields) &
-    preferred_fields %in% names(metadata)
+    preferred_fields %in% names(metadata) &
+    preferred_fields != "cluster_alias"
 ]
 
 categorical_fields <- preferred_fields[vapply(
@@ -568,7 +569,8 @@ numeric_filter_fields <- names(metadata)[vapply(
 numeric_filter_fields <- setdiff(
   numeric_filter_fields,
   c(
-    "CPM_scaling_factor"
+    "CPM_scaling_factor",
+    "cluster_alias"
   )
 )
 filter_fields <- setdiff(
@@ -1281,11 +1283,11 @@ ui <- function(request) {
                                                          selectInput("trajectory_measure", "Gene metric", c("Gene expression" = "expression", "Fraction of cells expressing" = "fraction"), "expression")
                                         ),
                                         conditionalPanel(condition = "input.plot_type == 'trajectory'",
-                                                         selectInput("smoother", "Trend line", c("Linear fit" = "lm", "LOESS smoother" = "loess", "None" = "none"), "lm"),
+                                                         selectInput("smoother", "Trend line", c("Linear fit" = "lm", "LOESS smoother" = "loess", "None" = "none"), "loess"),
                                                          checkboxInput("show_fit_error", "Show 95% confidence (error of fit)", TRUE),
                                                          checkboxInput("show_points", "Show individual observations", TRUE)
                                         ),
-                                        conditionalPanel(condition = "input.plot_type == 'violin' || (input.plot_type == 'trajectory' && input.facet_variable != 'none')",
+                                        conditionalPanel(condition = "input.plot_type == 'violin' || input.plot_type == 'trajectory'",
                                                          div(class = "filter-row",
                                                              selectInput("facets_per_row", "Facets per row", c("1" = 1, "2" = 2, "3" = 3, "4" = 4), 3),
                                                              selectInput("facet_row_height", "Height per facet", c("Compact" = 225, "Standard" = 300, "Tall" = 450, "Extra tall" = 600), 450)
@@ -1304,8 +1306,8 @@ ui <- function(request) {
                                                                           checkboxInput("log_scale", "Plot ln(CP10K+1)", TRUE)
                                                          ),
                                                          div(class = "expression-scale-row",
-                                                             numericInput("expression_minimum", "Minimum Expr", 0, min = 0),
-                                                             numericInput("expression_maximum", "Maximum Expr", 1, min = 0)
+                                                             numericInput("expression_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
+                                                             numericInput("expression_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
                                                          ),
                                                          conditionalPanel(condition = "input.plot_type == 'dot'",
                                                                           div(class = "expression-scale-row",
@@ -1319,8 +1321,8 @@ ui <- function(request) {
                                         ),
                                         conditionalPanel(condition = "input.plot_type == 'correlation'",
                                                          div(class = "expression-scale-row",
-                                                             numericInput("correlation_axis_minimum", "Minimum Expr", 0, min = 0),
-                                                             numericInput("correlation_axis_maximum", "Maximum Expr", 1, min = 0)
+                                                             numericInput("correlation_axis_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
+                                                             numericInput("correlation_axis_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
                                                          ),
                                                          checkboxInput("show_orthogonal_fit", "Show orthogonal fit line", TRUE),
                                                          div(class = "expression-scale-row",
@@ -3192,7 +3194,7 @@ server <- function(input, output, session) {
     )
     updateNumericInput(session, "correlation_size_minimum", value = 1.5)
     updateNumericInput(session, "correlation_size_maximum", value = 7)
-    updateSelectInput(session, "smoother", selected = "lm")
+    updateSelectInput(session, "smoother", selected = "loess")
     updateCheckboxInput(session, "show_points", value = TRUE)
     updateCheckboxInput(session, "show_fit_error", value = TRUE)
     updateSelectInput(session, "violin_display", selected = "violin")
@@ -3315,12 +3317,6 @@ server <- function(input, output, session) {
       input$plot_type %in% c("trajectory", "violin"),
       gene_data()
     )
-    if (
-      identical(input$plot_type, "trajectory") &&
-      identical(input$facet_variable, "none")
-    ) {
-      return(NULL)
-    }
     data <- apply_filter_specification(
       gene_data(),
       active_filter_specification()
