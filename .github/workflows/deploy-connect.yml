@@ -95,7 +95,7 @@ jobs:
             appDir = ".",
             appFiles = app_files,
             appPrimaryDoc = "app.R",
-            dependencyResolution = "strict",
+            dependencyResolution = "library",
             packageRepositoryResolutionR = "lax",
             verbose = TRUE
           )
