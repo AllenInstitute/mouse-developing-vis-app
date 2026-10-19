@@ -943,6 +943,18 @@ ui <- function(request) {
         object-fit: contain;
         margin: 0 auto;
       }
+      
+      .sidebar-section {
+        margin-top: 10px;
+      }
+      
+      .sidebar-section > .section-major:first-child,
+      .sidebar-section > .section-minor:first-child {
+        border-top: 0;
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+      
       .mouse-logo-link { width: 180px; display: flex; align-items: center; }
       .mouse-logo { height: 52px; max-width: 175px; object-fit: contain; }
       .mouse-title {
@@ -957,7 +969,7 @@ ui <- function(request) {
       .bslib-sidebar-layout > .sidebar,
       .bslib-sidebar-layout > aside {
         background: #214E68 !important; color: white !important;
-        padding: 8px 10px !important;
+        padding: 3px 3px !important;
       }
       .bslib-sidebar-layout > .sidebar label,
       .bslib-sidebar-layout > .sidebar h4,
@@ -1109,6 +1121,42 @@ ui <- function(request) {
         width: 100% !important; height: 100% !important;
         min-height: 0 !important;
       }
+      
+      /* Reduce the inner sidebar margins */
+      .bslib-sidebar-layout > .sidebar > .sidebar-content {
+        padding-left: 7px !important;
+        padding-right: 7px !important;
+      }
+      
+      /* Let each box fill the available width */
+      .bslib-sidebar-layout .gene-controls {
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+      }
+      
+      /* Smaller checkbox text, including nested label spans */
+      .bslib-sidebar-layout .shiny-input-checkbox label,
+      .bslib-sidebar-layout .shiny-input-checkbox label span,
+      .bslib-sidebar-layout .checkbox label,
+      .bslib-sidebar-layout .checkbox label span,
+      .bslib-sidebar-layout .form-check-label {
+        font-size: 0.85rem !important;
+        line-height: 1.2 !important;
+      }
+      
+      /* Space between sidebar sections */
+      .bslib-sidebar-layout > .sidebar > .sidebar-content {
+        gap: 8px !important;
+      }
+      
+      /* Remove extra margins around the boxes */
+      .bslib-sidebar-layout .gene-controls,
+      .bslib-sidebar-layout .sidebar-section {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+      }
+      
       @media (max-width: 1000px) {
         .mouse-title { font-size: 15px; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
         .mouse-header-links span { display: none; }
@@ -1246,7 +1294,7 @@ ui <- function(request) {
       conditionalPanel(
         condition = "output.gene_loaded",
         div(
-          class = "compact-controls",
+          class = "gene-controls sidebar-section",
           h4("Filter and scale", class = "section-major"),
           selectizeInput(
             "filter_fields",
@@ -1267,9 +1315,12 @@ ui <- function(request) {
           ),
           checkboxInput(
             "omit_zero_values",
-            "Discard observations with zero counts",
+            "Discard values with zero counts",
             FALSE
-          ),
+          )
+        ),  
+        div(
+          class = "gene-controls sidebar-section",
           h4("Plot gene data", class = "section-minor"),
           selectInput("plot_type", "Plot type", choices = c(
             "Trajectory across development" = "trajectory",
@@ -1360,7 +1411,6 @@ ui <- function(request) {
       ),
       if (tokens_available) {
         tagList(
-          hr(style = "margin: 3px 0;"),
           div(
             class = "glossary-panel gene-controls",
             selectizeInput(
@@ -1383,75 +1433,78 @@ ui <- function(request) {
         )
       },
       
-      h4(
-        "Contribute",
-        class = "section-major",
-        style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
-      ),
       div(
-        style = paste(
-          "display: flex; gap: 6px; width: 100%;",
-          "align-items: stretch; margin-bottom: 1px;"
+        class = "gene-controls sidebar-section",
+        h4(
+          "Contribute",
+          class = "section-major",
+          style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
         ),
-        tags$a(
-          href = 'mailto:jeremym@alleninstitute.org?subject=Developing%20Mouse%20Visual%20Cortex%20Gene%20Expression%20Viewer',
-          icon("envelope", lib = "font-awesome"),
-          tags$span("PROVIDE FEEDBACK"),
+        div(
           style = paste(
-            "display: inline-flex; flex: 1 1 0;",
-            "align-items: center; justify-content: center; gap: 4px;",
-            "min-height: 29px; padding: 4px 6px;",
-            "background: #666666; border: 1px solid white;",
-            "border-radius: 0.25rem; color: white !important;",
-            "font-size: 0.68rem; font-weight: 600;",
-            "line-height: 1; text-decoration: none; white-space: nowrap;"
+            "display: flex; gap: 6px; width: 100%;",
+            "align-items: stretch; margin-bottom: 1px;"
+          ),
+          tags$a(
+            href = 'mailto:jeremym@alleninstitute.org?subject=Developing%20Mouse%20Visual%20Cortex%20Gene%20Expression%20Viewer',
+            icon("envelope", lib = "font-awesome"),
+            tags$span("GIVE FEEDBACK"),
+            style = paste(
+              "display: inline-flex; flex: 1 1 0;",
+              "align-items: center; justify-content: center; gap: 4px;",
+              "min-height: 29px; padding: 4px 6px;",
+              "background: #666666; border: 1px solid white;",
+              "border-radius: 0.25rem; color: white !important;",
+              "font-size: 0.68rem; font-weight: 600;",
+              "line-height: 1; text-decoration: none; white-space: nowrap;"
+            )
+          ),
+          tags$a(
+            href = "https://github.com/AllenInstitute/mouse-developing-vis-app/",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            icon("code", lib = "font-awesome"),
+            tags$span("ACCESS CODE"),
+            style = paste(
+              "display: inline-flex; flex: 1 1 0;",
+              "align-items: center; justify-content: center; gap: 4px;",
+              "min-height: 29px; padding: 4px 6px;",
+              "background: #666666; border: 1px solid white;",
+              "border-radius: 0.25rem; color: white !important;",
+              "font-size: 0.68rem; font-weight: 600;",
+              "line-height: 1; text-decoration: none; white-space: nowrap;"
+            )
           )
         ),
-        tags$a(
-          href = "https://github.com/AllenInstitute/mouse-developing-vis-app/",
-          target = "_blank",
-          rel = "noopener noreferrer",
-          icon("code", lib = "font-awesome"),
-          tags$span("ACCESS CODE"),
-          style = paste(
-            "display: inline-flex; flex: 1 1 0;",
-            "align-items: center; justify-content: center; gap: 4px;",
-            "min-height: 29px; padding: 4px 6px;",
-            "background: #666666; border: 1px solid white;",
-            "border-radius: 0.25rem; color: white !important;",
-            "font-size: 0.68rem; font-weight: 600;",
-            "line-height: 1; text-decoration: none; white-space: nowrap;"
-          )
+        p(
+          "We encourage contributions via the above links.",
+          style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
+        ),
+        h4(
+          "Acknowledgements",
+          class = "section-minor",
+          style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
+        ),
+        p(
+          "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT-5.6 Think and GPT-6.1 Sol). All data included in the app are from ",
+          a(
+            "Continuous cell-type diversification in mouse visual cortex development",
+            href = "https://doi.org/10.1038/s41586-025-09644-1",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            style = "color: white; font-weight: bold;"
+          ),
+          " and are freely available on ",
+          a(
+            "ABC Atlas Access",
+            href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            style = "color: white; font-weight: bold;"
+          ),
+          ". Beta testers include: Irika Sinha.",
+          style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
         )
-      ),
-      p(
-        "We encourage contributions via the above links.",
-        style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
-      ),
-      h4(
-        "Acknowledgements",
-        class = "section-minor",
-        style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
-      ),
-      p(
-        "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT-5.6 Think and GPT-6.1 Sol). All data included in the app are from ",
-        a(
-          "Continuous cell-type diversification in mouse visual cortex development",
-          href = "https://doi.org/10.1038/s41586-025-09644-1",
-          target = "_blank",
-          rel = "noopener noreferrer",
-          style = "color: white; font-weight: bold;"
-        ),
-        " and are freely available on ",
-        a(
-          "ABC Atlas Access",
-          href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
-          target = "_blank",
-          rel = "noopener noreferrer",
-          style = "color: white; font-weight: bold;"
-        ),
-        ". Beta testers include: Irika Sinha.",
-        style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
       )
     ),
     
