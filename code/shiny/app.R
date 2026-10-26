@@ -907,6 +907,9 @@ ui <- function(request) {
       .sidebar-secondary { background: #666666 !important; border: 1px solid white !important; color: white !important; border-radius: .25rem; font-size: .68rem !important; font-weight: 600; padding: 4px 6px !important; min-height: 29px; text-decoration: none; }
       .resource-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 5px; }
       .resource-button-row .shiny-html-output { min-width: 0; }
+      .plot-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+      .plot-action-row .btn { width: 100%; font-size: .68rem !important; white-space: nowrap; }
+      .plot-action-row .shiny-download-link { display: flex; align-items: center; justify-content: center; gap: 5px; }
       .resource-button-row a { display: flex; align-items: center; justify-content: center; gap: 3px; }
       .additional-options { border-top: 1px solid rgba(255,255,255,.4); margin-top: 12px; padding-top: 9px; }
       .additional-options summary { cursor: pointer; font-weight: 600; list-style: none; margin-bottom: 8px; }
@@ -943,18 +946,15 @@ ui <- function(request) {
         object-fit: contain;
         margin: 0 auto;
       }
-      
       .sidebar-section {
         margin-top: 10px;
       }
-      
       .sidebar-section > .section-major:first-child,
       .sidebar-section > .section-minor:first-child {
         border-top: 0;
         padding-top: 0 !important;
         margin-top: 0 !important;
       }
-      
       .mouse-logo-link { width: 180px; display: flex; align-items: center; }
       .mouse-logo { height: 52px; max-width: 175px; object-fit: contain; }
       .mouse-title {
@@ -969,7 +969,7 @@ ui <- function(request) {
       .bslib-sidebar-layout > .sidebar,
       .bslib-sidebar-layout > aside {
         background: #214E68 !important; color: white !important;
-        padding: 3px 3px !important;
+        padding: 8px 10px !important;
       }
       .bslib-sidebar-layout > .sidebar label,
       .bslib-sidebar-layout > .sidebar h4,
@@ -1121,42 +1121,6 @@ ui <- function(request) {
         width: 100% !important; height: 100% !important;
         min-height: 0 !important;
       }
-      
-      /* Reduce the inner sidebar margins */
-      .bslib-sidebar-layout > .sidebar > .sidebar-content {
-        padding-left: 7px !important;
-        padding-right: 7px !important;
-      }
-      
-      /* Let each box fill the available width */
-      .bslib-sidebar-layout .gene-controls {
-        width: 100%;
-        max-width: none;
-        box-sizing: border-box;
-      }
-      
-      /* Smaller checkbox text, including nested label spans */
-      .bslib-sidebar-layout .shiny-input-checkbox label,
-      .bslib-sidebar-layout .shiny-input-checkbox label span,
-      .bslib-sidebar-layout .checkbox label,
-      .bslib-sidebar-layout .checkbox label span,
-      .bslib-sidebar-layout .form-check-label {
-        font-size: 0.85rem !important;
-        line-height: 1.2 !important;
-      }
-      
-      /* Space between sidebar sections */
-      .bslib-sidebar-layout > .sidebar > .sidebar-content {
-        gap: 8px !important;
-      }
-      
-      /* Remove extra margins around the boxes */
-      .bslib-sidebar-layout .gene-controls,
-      .bslib-sidebar-layout .sidebar-section {
-        margin-top: 0 !important;
-        margin-bottom: 0 !important;
-      }
-      
       @media (max-width: 1000px) {
         .mouse-title { font-size: 15px; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
         .mouse-header-links span { display: none; }
@@ -1294,118 +1258,122 @@ ui <- function(request) {
       conditionalPanel(
         condition = "output.gene_loaded",
         div(
-          class = "gene-controls sidebar-section",
-          h4("Filter and scale", class = "section-major"),
-          selectizeInput(
-            "filter_fields",
-            "Filter metadata",
-            choices = filter_fields,
-            selected = character(),
-            multiple = TRUE,
-            options = list(
-              placeholder = "Add one or more filters",
-              maxOptions = 1000,
-              closeAfterSelect = TRUE,
-              plugins = list("remove_button")
-            )
+          class = "compact-controls",
+          div(class = "gene-controls sidebar-section",
+              h4("Filter and scale", class = "section-major"),
+              selectizeInput(
+                "filter_fields",
+                "Filter metadata",
+                choices = filter_fields,
+                selected = character(),
+                multiple = TRUE,
+                options = list(
+                  placeholder = "Add one or more filters",
+                  maxOptions = 1000,
+                  closeAfterSelect = TRUE,
+                  plugins = list("remove_button")
+                )
+              ),
+              div(
+                class = "stacked-filter-panel",
+                uiOutput("stacked_filter_controls")
+              ),
+              checkboxInput(
+                "omit_zero_values",
+                "Discard values with zero counts",
+                FALSE
+              )
           ),
-          div(
-            class = "stacked-filter-panel",
-            uiOutput("stacked_filter_controls")
-          ),
-          checkboxInput(
-            "omit_zero_values",
-            "Discard values with zero counts",
-            FALSE
-          )
-        ),  
-        div(
-          class = "gene-controls sidebar-section",
-          h4("Plot gene data", class = "section-minor"),
-          selectInput("plot_type", "Plot type", choices = c(
-            "Trajectory across development" = "trajectory",
-            "Dot plot of expression" = "dot",
-            "Heatmap of expression" = "heatmap",
-            "Violin plot with observations" = "violin",
-            "Two-gene correlation" = "correlation"
-          ), selected = "trajectory"),
-          conditionalPanel(condition = "input.plot_type == 'trajectory'",
-                           selectInput("progression_variable", "Developmental progression axis", progression_fields, default_progression),
-                           selectInput("facet_variable", "Facet by", c("All data" = "none", cell_type_fields, region_field), default_facet),
-                           selectInput("color_variable", "Color by", c("All data" = "none", region_field), "none")
-          ),
-          conditionalPanel(condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
-                           selectInput("x_variable", "Horizontal axis", plot_fields, default_x),
-                           selectInput("second_dimension", "Vertical axis", setdiff(plot_fields, default_x), default_second)
-          ),
-          conditionalPanel(condition = "input.plot_type == 'correlation'",
-                           selectizeInput("comparison_gene", "Comparison gene symbol", choices = NULL,
-                                          options = list(placeholder = "Type a comparison gene symbol", maxOptions = 50, create = FALSE)),
-                           actionButton("get_comparison_gene_data", "Get 2nd gene data", class = "btn-outline-primary", width = "100%"),
-                           div(class = "gene-status", textOutput("comparison_gene_status"))
-          ),
-          conditionalPanel(condition = "input.plot_type != 'correlation' || output.comparison_gene_loaded",
-                           conditionalPanel(condition = "input.plot_type == 'correlation'",
-                                            selectInput("correlation_color_variable", "Color by", c("All data" = "none", unique(c(subclass_field, region_field))), default_correlation_color)
-                           ),
-                           actionButton("make_plot", "Generate plot", class = "btn-primary", width = "100%"),
-                           actionButton("reset_defaults", "Reset plot options", class = "sidebar-secondary mt-1", width = "100%"),
-                           actionButton("share_view", "Share this view", icon = icon("share-nodes"), class = "sidebar-secondary mt-1", width = "100%"),
-                           tags$details(class = "additional-options",
-                                        tags$summary("Additional plot options"),
-                                        conditionalPanel(condition = "input.plot_type != 'dot'",
-                                                         selectInput("trajectory_measure", "Gene metric", c("Gene expression" = "expression", "Fraction of cells expressing" = "fraction"), "expression")
-                                        ),
-                                        conditionalPanel(condition = "input.plot_type == 'trajectory'",
-                                                         selectInput("smoother", "Trend line", c("Linear fit" = "lm", "LOESS smoother" = "loess", "None" = "none"), "loess"),
-                                                         checkboxInput("show_fit_error", "Show 95% confidence (error of fit)", TRUE),
-                                                         checkboxInput("show_points", "Show individual observations", TRUE)
-                                        ),
-                                        conditionalPanel(condition = "input.plot_type == 'violin' || input.plot_type == 'trajectory'",
-                                                         div(class = "filter-row",
-                                                             selectInput("facets_per_row", "Facets per row", c("1" = 1, "2" = 2, "3" = 3, "4" = 4), 3),
-                                                             selectInput("facet_row_height", "Height per facet", c("Compact" = 225, "Standard" = 300, "Tall" = 450, "Extra tall" = 600), 450)
-                                                         ),
-                                                         div(class = "filter-row",
-                                                             selectInput("violin_facets_per_page", "Facets per page", c("8" = 8, "12" = 12, "20" = 20, "All" = "all"), 12),
-                                                             uiOutput("violin_page_control")
-                                                         )
-                                        ),
-                                        conditionalPanel(condition = "input.plot_type == 'violin'",
-                                                         selectInput("violin_display", "Distribution display", c("Violin" = "violin", "Boxplot" = "boxplot"), "violin"),
-                                                         checkboxInput("show_violin_points", "Show individual observations", TRUE)
-                                        ),
-                                        conditionalPanel(condition = "input.plot_type != 'correlation'",
-                                                         conditionalPanel(condition = "input.trajectory_measure == 'expression' || input.plot_type == 'dot'",
-                                                                          checkboxInput("log_scale", "Plot ln(CP10K+1)", TRUE)
-                                                         ),
-                                                         div(class = "expression-scale-row",
-                                                             numericInput("expression_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
-                                                             numericInput("expression_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
-                                                         ),
-                                                         conditionalPanel(condition = "input.plot_type == 'dot'",
-                                                                          div(class = "expression-scale-row",
-                                                                              numericInput("dot_size_minimum", "Min. dot size", 1, min = 0, step = 0.5),
-                                                                              numericInput("dot_size_maximum", "Max. dot size", 9, min = 0.5, step = 0.5)
-                                                                          )
-                                                         ),
-                                                         conditionalPanel(condition = "input.plot_type == 'heatmap'",
-                                                                          checkboxInput("show_heatmap_counts", "Show number of observations", TRUE)
-                                                         )
-                                        ),
-                                        conditionalPanel(condition = "input.plot_type == 'correlation'",
-                                                         div(class = "expression-scale-row",
-                                                             numericInput("correlation_axis_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
-                                                             numericInput("correlation_axis_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
-                                                         ),
-                                                         checkboxInput("show_orthogonal_fit", "Show orthogonal fit line", TRUE),
-                                                         div(class = "expression-scale-row",
-                                                             numericInput("correlation_size_minimum", "Min. dot size", 1.5, min = 0, step = 0.5),
-                                                             numericInput("correlation_size_maximum", "Max. dot size", 7, min = 0.5, step = 0.5)
-                                                         )
-                                        ),
-                                        actionButton("make_plot_bottom", "Generate plot", class = "btn-primary mt-1", width = "100%")
-                           )
+          div(class = "gene-controls sidebar-section",
+              h4("Plot gene data", class = "section-minor"),
+              selectInput("plot_type", "Plot type", choices = c(
+                "Trajectory across development" = "trajectory",
+                "Dot plot of expression" = "dot",
+                "Heatmap of expression" = "heatmap",
+                "Violin plot with observations" = "violin",
+                "Two-gene correlation" = "correlation"
+              ), selected = "trajectory"),
+              conditionalPanel(condition = "input.plot_type == 'trajectory'",
+                               selectInput("progression_variable", "Developmental progression axis", progression_fields, default_progression),
+                               selectInput("facet_variable", "Facet by", c("All data" = "none", cell_type_fields, region_field), default_facet),
+                               selectInput("color_variable", "Color by", c("All data" = "none", region_field), "none")
+              ),
+              conditionalPanel(condition = "input.plot_type != 'trajectory' && input.plot_type != 'correlation'",
+                               selectInput("x_variable", "Horizontal axis", plot_fields, default_x),
+                               selectInput("second_dimension", "Vertical axis", setdiff(plot_fields, default_x), default_second)
+              ),
+              conditionalPanel(condition = "input.plot_type == 'correlation'",
+                               selectizeInput("comparison_gene", "Comparison gene symbol", choices = NULL,
+                                              options = list(placeholder = "Type a comparison gene symbol", maxOptions = 50, create = FALSE)),
+                               actionButton("get_comparison_gene_data", "Get 2nd gene data", class = "btn-outline-primary", width = "100%"),
+                               div(class = "gene-status", textOutput("comparison_gene_status"))
+              ),
+              conditionalPanel(condition = "input.plot_type != 'correlation' || output.comparison_gene_loaded",
+                               conditionalPanel(condition = "input.plot_type == 'correlation'",
+                                                selectInput("correlation_color_variable", "Color by", c("All data" = "none", unique(c(subclass_field, region_field))), default_correlation_color)
+                               ),
+                               
+                               tags$details(class = "additional-options",
+                                            tags$summary("Additional plot options"),
+                                            conditionalPanel(condition = "input.plot_type != 'dot'",
+                                                             selectInput("trajectory_measure", "Gene metric", c("Gene expression" = "expression", "Fraction of cells expressing" = "fraction"), "expression")
+                                            ),
+                                            conditionalPanel(condition = "input.plot_type == 'trajectory'",
+                                                             selectInput("smoother", "Trend line", c("Linear fit" = "lm", "LOESS smoother" = "loess", "None" = "none"), "lm"),
+                                                             checkboxInput("show_fit_error", "Show 95% confidence (error of fit)", TRUE),
+                                                             checkboxInput("show_points", "Show individual observations", TRUE)
+                                            ),
+                                            conditionalPanel(condition = "input.plot_type == 'violin' || input.plot_type == 'trajectory'",
+                                                             div(class = "filter-row",
+                                                                 selectInput("facets_per_row", "Facets per row", c("1" = 1, "2" = 2, "3" = 3, "4" = 4), 3),
+                                                                 selectInput("facet_row_height", "Height per facet", c("Compact" = 225, "Standard" = 300, "Tall" = 450, "Extra tall" = 600), 450)
+                                                             ),
+                                                             div(class = "filter-row",
+                                                                 selectInput("violin_facets_per_page", "Facets per page", c("8" = 8, "12" = 12, "20" = 20, "All" = "all"), 12),
+                                                                 uiOutput("violin_page_control")
+                                                             )
+                                            ),
+                                            conditionalPanel(condition = "input.plot_type == 'violin'",
+                                                             selectInput("violin_display", "Distribution display", c("Violin" = "violin", "Boxplot" = "boxplot"), "violin"),
+                                                             checkboxInput("show_violin_points", "Show individual observations", TRUE)
+                                            ),
+                                            conditionalPanel(condition = "input.plot_type != 'correlation'",
+                                                             conditionalPanel(condition = "input.trajectory_measure == 'expression' || input.plot_type == 'dot'",
+                                                                              checkboxInput("log_scale", "Plot ln(CP10K+1)", TRUE)
+                                                             ),
+                                                             div(class = "expression-scale-row",
+                                                                 numericInput("expression_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
+                                                                 numericInput("expression_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
+                                                             ),
+                                                             conditionalPanel(condition = "input.plot_type == 'dot'",
+                                                                              div(class = "expression-scale-row",
+                                                                                  numericInput("dot_size_minimum", "Min. dot size", 1, min = 0, step = 0.5),
+                                                                                  numericInput("dot_size_maximum", "Max. dot size", 9, min = 0.5, step = 0.5)
+                                                                              )
+                                                             ),
+                                                             conditionalPanel(condition = "input.plot_type == 'heatmap'",
+                                                                              checkboxInput("show_heatmap_counts", "Show number of observations", FALSE)
+                                                             )
+                                            ),
+                                            conditionalPanel(condition = "input.plot_type == 'correlation'",
+                                                             div(class = "expression-scale-row",
+                                                                 numericInput("correlation_axis_minimum", "Minimum Expr", 0, min = 0, step = 0.1),
+                                                                 numericInput("correlation_axis_maximum", "Maximum Expr", 1, min = 0, step = 0.1)
+                                                             ),
+                                                             checkboxInput("show_orthogonal_fit", "Show orthogonal fit line", TRUE),
+                                                             div(class = "expression-scale-row",
+                                                                 numericInput("correlation_size_minimum", "Min. dot size", 1.5, min = 0, step = 0.5),
+                                                                 numericInput("correlation_size_maximum", "Max. dot size", 7, min = 0.5, step = 0.5)
+                                                             )
+                                            )
+                               ),
+                               actionButton("make_plot", "Generate plot", class = "btn-primary", width = "100%"),
+                               div(class = "plot-action-row",
+                                   downloadButton("download_plot", "Download plot", class = "sidebar-secondary mt-1"),
+                                   actionButton("share_view", "Share this view", icon = icon("share-nodes"), class = "sidebar-secondary mt-1")
+                               ),
+                               actionButton("reset_defaults", "Reset plot options", class = "sidebar-secondary mt-1", width = "100%")
+              )
           )
         )
       ),
@@ -1433,78 +1401,77 @@ ui <- function(request) {
         )
       },
       
-      div(
-        class = "gene-controls sidebar-section",
-        h4(
-          "Contribute",
-          class = "section-major",
-          style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
-        ),
-        div(
-          style = paste(
-            "display: flex; gap: 6px; width: 100%;",
-            "align-items: stretch; margin-bottom: 1px;"
+      div(class = "gene-controls sidebar-section",
+          h4(
+            "Contribute",
+            class = "section-major",
+            style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
           ),
-          tags$a(
-            href = 'mailto:jeremym@alleninstitute.org?subject=Developing%20Mouse%20Visual%20Cortex%20Gene%20Expression%20Viewer',
-            icon("envelope", lib = "font-awesome"),
-            tags$span("GIVE FEEDBACK"),
+          div(
             style = paste(
-              "display: inline-flex; flex: 1 1 0;",
-              "align-items: center; justify-content: center; gap: 4px;",
-              "min-height: 29px; padding: 4px 6px;",
-              "background: #666666; border: 1px solid white;",
-              "border-radius: 0.25rem; color: white !important;",
-              "font-size: 0.68rem; font-weight: 600;",
-              "line-height: 1; text-decoration: none; white-space: nowrap;"
+              "display: flex; gap: 6px; width: 100%;",
+              "align-items: stretch; margin-bottom: 1px;"
+            ),
+            tags$a(
+              href = 'mailto:jeremym@alleninstitute.org?subject=Developing%20Mouse%20Visual%20Cortex%20Gene%20Expression%20Viewer',
+              icon("envelope", lib = "font-awesome"),
+              tags$span("GIVE FEEDBACK"),
+              style = paste(
+                "display: inline-flex; flex: 1 1 0;",
+                "align-items: center; justify-content: center; gap: 4px;",
+                "min-height: 29px; padding: 4px 6px;",
+                "background: #666666; border: 1px solid white;",
+                "border-radius: 0.25rem; color: white !important;",
+                "font-size: 0.68rem; font-weight: 600;",
+                "line-height: 1; text-decoration: none; white-space: nowrap;"
+              )
+            ),
+            tags$a(
+              href = "https://github.com/AllenInstitute/mouse-developing-vis-app/",
+              target = "_blank",
+              rel = "noopener noreferrer",
+              icon("code", lib = "font-awesome"),
+              tags$span("ACCESS CODE"),
+              style = paste(
+                "display: inline-flex; flex: 1 1 0;",
+                "align-items: center; justify-content: center; gap: 4px;",
+                "min-height: 29px; padding: 4px 6px;",
+                "background: #666666; border: 1px solid white;",
+                "border-radius: 0.25rem; color: white !important;",
+                "font-size: 0.68rem; font-weight: 600;",
+                "line-height: 1; text-decoration: none; white-space: nowrap;"
+              )
             )
           ),
-          tags$a(
-            href = "https://github.com/AllenInstitute/mouse-developing-vis-app/",
-            target = "_blank",
-            rel = "noopener noreferrer",
-            icon("code", lib = "font-awesome"),
-            tags$span("ACCESS CODE"),
-            style = paste(
-              "display: inline-flex; flex: 1 1 0;",
-              "align-items: center; justify-content: center; gap: 4px;",
-              "min-height: 29px; padding: 4px 6px;",
-              "background: #666666; border: 1px solid white;",
-              "border-radius: 0.25rem; color: white !important;",
-              "font-size: 0.68rem; font-weight: 600;",
-              "line-height: 1; text-decoration: none; white-space: nowrap;"
-            )
+          p(
+            "We encourage contributions via the above links.",
+            style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
+          ),
+          h4(
+            "Acknowledgements",
+            class = "section-minor",
+            style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
+          ),
+          p(
+            "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT-5.6 Think and GPT-6.1 Sol). All data included in the app are from ",
+            a(
+              "Continuous cell-type diversification in mouse visual cortex development",
+              href = "https://doi.org/10.1038/s41586-025-09644-1",
+              target = "_blank",
+              rel = "noopener noreferrer",
+              style = "color: white; font-weight: bold;"
+            ),
+            " and are freely available on ",
+            a(
+              "ABC Atlas Access",
+              href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
+              target = "_blank",
+              rel = "noopener noreferrer",
+              style = "color: white; font-weight: bold;"
+            ),
+            ". Beta testers include: Irika Sinha.",
+            style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
           )
-        ),
-        p(
-          "We encourage contributions via the above links.",
-          style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
-        ),
-        h4(
-          "Acknowledgements",
-          class = "section-minor",
-          style = "font-size: 1.2rem; margin: 1px 0 0px; color: white;"
-        ),
-        p(
-          "App developed by Jeremy Miller, coded with help from Microsoft Copilot (model GPT-5.6 Think and GPT-6.1 Sol). All data included in the app are from ",
-          a(
-            "Continuous cell-type diversification in mouse visual cortex development",
-            href = "https://doi.org/10.1038/s41586-025-09644-1",
-            target = "_blank",
-            rel = "noopener noreferrer",
-            style = "color: white; font-weight: bold;"
-          ),
-          " and are freely available on ",
-          a(
-            "ABC Atlas Access",
-            href = "https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html",
-            target = "_blank",
-            rel = "noopener noreferrer",
-            style = "color: white; font-weight: bold;"
-          ),
-          ". Beta testers include: Irika Sinha.",
-          style = "font-size: 0.9rem; line-height: 1.15; margin: 1px 0 5px; color: white;"
-        )
       )
     ),
     
@@ -1721,7 +1688,6 @@ server <- function(input, output, session) {
     "get_gene_data",
     "get_comparison_gene_data",
     "make_plot",
-    "make_plot_bottom",
     "plot_previous_page",
     "plot_next_page",
     "reset_defaults",
@@ -2043,7 +2009,7 @@ server <- function(input, output, session) {
         target = "row"
       ),
       options = list(
-        pageLength = 5,
+        pageLength = 10,
         lengthMenu = c(5, 10, 20, 50),
         scrollX = TRUE,
         autoWidth = TRUE,
@@ -2272,6 +2238,7 @@ server <- function(input, output, session) {
           }
         )
         gene_data(loaded)
+        downloadable_plot(NULL)
         loaded_gene(gene_to_load)
         updateSelectizeInput(
           session,
@@ -3250,7 +3217,7 @@ server <- function(input, output, session) {
     updateCheckboxInput(
       session,
       "show_heatmap_counts",
-      value = TRUE
+      value = FALSE
     )
     updateSelectInput(session, "plot_type", selected = "trajectory")
     updateSelectInput(session, "trajectory_measure", selected = "expression")
@@ -3269,7 +3236,7 @@ server <- function(input, output, session) {
     )
     updateNumericInput(session, "correlation_size_minimum", value = 1.5)
     updateNumericInput(session, "correlation_size_maximum", value = 7)
-    updateSelectInput(session, "smoother", selected = "loess")
+    updateSelectInput(session, "smoother", selected = "lm")
     updateCheckboxInput(session, "show_points", value = TRUE)
     updateCheckboxInput(session, "show_fit_error", value = TRUE)
     updateSelectInput(session, "violin_display", selected = "violin")
@@ -3283,6 +3250,7 @@ server <- function(input, output, session) {
   })
   
   
+  downloadable_plot <- reactiveVal(NULL)
   plot_settings <- reactiveVal(NULL)
   
   capture_plot_settings <- function() {
@@ -3366,7 +3334,6 @@ server <- function(input, output, session) {
   observeEvent(
     list(
       input$make_plot,
-      input$make_plot_bottom,
       bookmark_plot_trigger()
     ),
     {
@@ -4735,6 +4702,7 @@ server <- function(input, output, session) {
           )
       }
     })
+    downloadable_plot(rendered_plot)
     if (settings$plot_type %in% c("trajectory", "violin")) {
       grob <- ggplot2::ggplotGrob(rendered_plot)
       panel_columns <- unique(grob$layout$l[grepl("^panel", grob$layout$name)])
@@ -4749,6 +4717,30 @@ server <- function(input, output, session) {
     }
   }, height = function() plot_pixel_height(), res = 96, execOnResize = FALSE)
   
+  output$download_plot <- downloadHandler(
+    filename = function() {
+      gene <- isolate(loaded_gene())
+      settings <- isolate(plot_settings())
+      paste0(gsub("[^A-Za-z0-9_-]", "_", gene), "_", settings$plot_type, ".png")
+    },
+    content = function(file) {
+      plot <- isolate(downloadable_plot())
+      settings <- isolate(plot_settings())
+      req(plot, settings)
+      width_px <- if (settings$plot_type %in% c("trajectory", "violin")) {
+        900L
+      } else if (!is.null(settings$matrix_plot_width)) {
+        as.integer(settings$matrix_plot_width)
+      } else 900L
+      height_px <- isolate(plot_pixel_height())
+      ggplot2::ggsave(
+        filename = file, plot = plot, device = "png",
+        width = width_px / 96, height = height_px / 96,
+        units = "in", dpi = 96, limitsize = FALSE
+      )
+    },
+    contentType = "image/png"
+  )
   output$plot_title <- renderText({
     if (is.null(loaded_gene())) {
       return("Retrieve a gene, then generate a plot")
