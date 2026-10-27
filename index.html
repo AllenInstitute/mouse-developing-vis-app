@@ -1,860 +1,396 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Allen Brain Map Resource Finder</title>
-    <style>
-      :root {
-        --page: #f3f0e8;
-        --page-2: #ded9d1;
-        --blue: #6464ff;
-        --green: #cdeb05;
-        --text: "Allen Institute Text", Arial, Helvetica, sans-serif;
-        --head:
-          "Allen Institute Headline", "Allen Institute Text", Arial, Helvetica,
-          sans-serif;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        margin: 0;
-        background: var(--page);
-        color: #000;
-        font-family: var(--text);
-        line-height: 1.45;
-      }
-      button,
-      input,
-      select {
-        font: inherit;
-      }
-      a {
-        color: inherit;
-      }
-      .wrap {
-        width: min(1240px, calc(100% - 48px));
-        margin: auto;
-      }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Developing Mouse Visual Cortex Gene Expression Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: sans-serif; display: flex; line-height: 1.6; background: #fff; }
+    .sidebar { width: 300px; min-width: 250px; background: #B3C1CD; padding: 20px; overflow-y: auto; height: 100vh; position: sticky; top: 0; border-right: 1px solid #ccc; }
+    .sidebar-logo { display: block; width: 210px; max-height: 145px; object-fit: contain; margin: 8px auto 14px; }
+    .sidebar ul { list-style: none; padding: 0; margin-top: 20px; }
+    .sidebar li { margin-bottom: 8px; }
+    .sidebar li a { text-decoration: none; color: #003057; display: block; padding: 2px; border-radius: 3px; transition: background-color .2s; }
+    .sidebar li a:hover { background: rgba(0,48,87,.1); }
+    .sidebar-h2 { font-weight: bold; font-size: 1em; }
+    .sidebar-h3 { font-weight: normal; font-size: .9em; padding-left: 20px; }
+    .sidebar-h4 { font-weight: normal; font-size: .85em; }
+    .main-content { flex-grow: 1; padding: 20px 40px; overflow-y: auto; height: 100vh; color: #333; }
+    h1, h2, h3, h4 { color: #003057; scroll-margin-top: 20px; border-bottom: 1px solid #eaecef; padding-bottom: .3em; margin: 24px 0 16px; }
+    h1 { border-bottom-width: 2px; }
+    h4 { border-bottom: none; margin-top: 18px; }
+    a { color: #0366d6; }
+    hr { height: 5px; border: none; background: #003057; width: 50%; margin: 24px auto 24px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 85%; padding: .2em .4em; background: rgba(27,31,35,.05); border-radius: 3px; }
+    pre { padding: 16px; overflow: auto; font-size: 85%; line-height: 1.45; background: #f6f8fa; border-radius: 3px; margin-bottom: 16px; }
+    pre code { padding: 0; background: transparent; }
+    ul, ol { margin: 0 0 14px 24px; }
+    li { margin-bottom: 4px; }
+    p { margin-bottom: 14px; }
+    blockquote { border-left: 4px solid #d0d7de; padding: 8px 16px; color: #57606a; margin: 0 0 16px; background: #f6f8fa; border-radius: 0 6px 6px 0; }
+    blockquote p { margin-bottom: 0; }
+    .page-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .page-header h1 { border: 0; margin: 0; padding: 0; flex: 1; }
+    .header-rule { border-bottom: 2px solid #eaecef; margin-bottom: 16px; padding-bottom: 8px; }
+    .header-logo { height: 55px; max-width: 150px; object-fit: contain; }
+    .launch-button { display: inline-block; padding: 10px 18px; margin: 6px 0 12px; background: #27ae60; color: #fff; text-decoration: none; border-radius: 5px; font-weight: 700; }
+    .launch-button:hover { background: #1f8f4e; }
+    .note { border-left: 4px solid #0dc5c1; background: #eefafa; padding: 10px 14px; margin-bottom: 16px; }
+    @media (max-width: 850px) { body { display: block; } .sidebar { position: relative; width: 100%; height: auto; } .main-content { height: auto; padding: 20px; } }
 
-      /* Header */
-      .site-header {
-        background: #000;
-        color: #fff;
-      }
-      .header-row {
-        min-height: 86px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 30px;
-      }
-      .breadcrumb {
-        font: 700 clamp(19px, 2.2vw, 29px)/1 var(--head);
-        letter-spacing: -0.035em;
-        text-transform: lowercase;
-      }
-      .breadcrumb a,
-      .header-nav a {
-        text-decoration: none;
-      }
-      .header-nav {
-        display: flex;
-        gap: 24px;
-        font-weight: 700;
-        font-size: 14px;
-        text-transform: lowercase;
-      }
-      .header-nav a {
-        border-bottom: 2px solid transparent;
-        padding: 8px 0;
-      }
-      .header-nav a:hover {
-        border-color: var(--green);
-      }
+    .main-content { min-width: 0; }
+    a:focus-visible { outline: 3px solid #003057; outline-offset: 3px; }
 
-      /* Goal selector */
-      .lead {
-        background: var(--blue);
-        color: #fff;
-        padding: 58px 0 48px;
-        position: relative;
-        overflow: hidden;
-      }
-      .lead::after {
-        content: "/";
-        position: absolute;
-        right: -1vw;
-        bottom: -15vw;
-        font: 700 39vw/1 var(--head);
-        color: var(--green);
-        pointer-events: none;
-      }
-      .lead-copy {
-        position: relative;
-        z-index: 1;
-        max-width: 1100px;
-      }
-      .lead h1,
-      .catalog h2 {
-        font-family: var(--head);
-        font-weight: 700;
-        letter-spacing: -0.045em;
-        line-height: 1;
-        text-transform: lowercase;
-      }
-      .lead h1 {
-        font-size: clamp(42px, 6.5vw, 78px);
-        margin: 0 0 20px;
-      }
-      .lead p {
-        font-size: clamp(18px, 1.8vw, 23px);
-        max-width: 800px;
-        margin: 0 0 34px;
-      }
-      .goals {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 2px;
-        background: #000;
-        border: 2px solid #000;
-        max-width: 1100px;
-      }
-      .goal {
-        background: var(--page);
-        border: 0;
-        padding: 19px 18px;
-        text-align: left;
-        min-height: 112px;
-        cursor: pointer;
-        color: #000;
-      }
-      .goal:hover,
-      .goal.active {
-        background: var(--green);
-      }
-      .goal-icon {
-        display: block;
-        font-size: 31px;
-        line-height: 1;
-        margin-bottom: 13px;
-      }
-      .goal b {
-        display: block;
-        font: 700 18px/1.12 var(--head);
-        text-transform: lowercase;
-      }
-      .show-all {
-        display: inline-block;
-        margin-top: 20px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: #fff;
-        font-weight: 700;
-        text-decoration: underline;
-        text-underline-offset: 5px;
-        cursor: pointer;
-      }
-      .show-all:hover {
-        color: var(--green);
-      }
+  section[aria-labelledby="getting-started"] .getting-started-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 18px; margin: 18px 0 26px; }
+  section[aria-labelledby="getting-started"] .getting-started-card { display: flex; flex-direction: column; padding: 20px; border: 1px solid #d8e1e8; border-top: 4px solid #0dc5c1; border-radius: 10px; background: #f7fafc; box-shadow: 0 3px 10px rgba(0,48,87,.06); }
+  section[aria-labelledby="getting-started"] .getting-started-card h4 { margin: 0 0 12px; padding: 0; }
+  section[aria-labelledby="getting-started"] .getting-started-card .launch-button { align-self: flex-start; margin: auto 0 0; }
 
-      /* Catalog */
-      .catalog {
-        background: #fff;
-        padding: 66px 0;
-      }
-      .catalog-hidden {
-        display: none;
-      }
-      .catalog-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: end;
-        gap: 30px;
-      }
-      .catalog-head {
-        max-width: 620px;
-      }
-      .catalog h2 {
-        font-size: clamp(38px, 5vw, 62px);
-        margin: 0 0 14px;
-      }
-      .catalog-head p {
-        font-size: 18px;
-      }
-      .controls {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .controls input,
-      .controls select {
-        background: #fff;
-        border: 2px solid #000;
-        border-radius: 0;
-        padding: 13px 14px;
-      }
-      .controls input {
-        width: 440px;
-        max-width: 100%;
-      }
-      .controls input:focus,
-      .controls select:focus {
-        outline: 4px solid var(--green);
-        outline-offset: 1px;
-      }
-      .status {
-        margin: 28px 0 15px;
-        font-size: 14px;
-      }
-      .cards {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        border: 2px solid #000;
-        background: #000;
-        gap: 2px;
-      }
-      .card {
-        background: #fff;
-        padding: 22px;
-        min-height: 350px;
-        display: flex;
-        flex-direction: column;
-      }
-      .card-top {
-        display: flex;
-        gap: 16px;
-        align-items: flex-start;
-      }
-      .icon {
-        width: 78px;
-        height: 78px;
-        object-fit: contain;
-        background: #808080;
-        border: 1px solid var(--page-2);
-        flex: 0 0 78px;
-      }
-      .kind {
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: lowercase;
-        margin-bottom: 7px;
-      }
-      .card h3 {
-        font: 700 22px/1.08 var(--head);
-        margin: 0;
-      }
-      .card p {
-        font-size: 15px;
-        flex: 1;
-        margin: 20px 0;
-        color: #222;
-      }
-      .chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 18px;
-      }
-      .chip {
-        background: var(--page);
-        padding: 6px 9px;
-        font-size: 12px;
-      }
-      .actions {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-      }
-      .open,
-      .details {
-        font-weight: 700;
-        text-transform: lowercase;
-      }
-      .open {
-        background: #000;
-        color: #fff;
-        text-decoration: none;
-        padding: 11px 13px;
-      }
-      .open:hover {
-        background: var(--blue);
-      }
-      .details {
-        border: 0;
-        background: transparent;
-        padding: 8px 0;
-        cursor: pointer;
-        text-decoration: underline;
-        text-underline-offset: 4px;
-      }
-      .loading,
-      .error {
-        background: var(--page);
-        border: 2px solid #000;
-        padding: 28px;
-      }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2 style="color:#003057">Mouse Visual Cortex Viewer</h2>
+    <img class="sidebar-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex Gene Expression Viewer logo">
+    <ul>
+      <li class="sidebar-h4"><a href="#top">(jump to top)</a></li>
+      <li class="sidebar-h2"><a href="#getting-started">Getting started</a></li>
+      <li class="sidebar-h3"><a href="#cell-type-markers">Figure 2c: Cell-type markers</a></li>
+      <li class="sidebar-h3"><a href="#progenitor-stages">Figure 2d: NEC and RG stages</a></li>
+      <li class="sidebar-h3"><a href="#expression-trajectories">Figure 4b: Trajectories</a></li>
+      <li class="sidebar-h3"><a href="#other-examples">Other examples</a></li>
+      <li class="sidebar-h2"><a href="#data">Data</a></li>
+      <li class="sidebar-h3"><a href="#scientific-source">Scientific source</a></li>
+      <li class="sidebar-h3"><a href="#pseudobulk">Pseudobulk expression</a></li>
+      <li class="sidebar-h3"><a href="#parquet">Gene-level Parquet files</a></li>
+      <li class="sidebar-h3"><a href="#metadata">Metadata and value sets</a></li>
+      <li class="sidebar-h3"><a href="#aws">AWS storage and access</a></li>
+      <li class="sidebar-h2"><a href="#using-the-viewer">Using the viewer</a></li>
+      <li class="sidebar-h3"><a href="#gene">Gene</a></li>
+      <li class="sidebar-h3"><a href="#filter-and-scale">Filter and scale</a></li>
+      <li class="sidebar-h3"><a href="#plot-controls">Plot controls</a></li>
+      <li class="sidebar-h2"><a href="#app-tabs">Application tabs</a></li>
+      <li class="sidebar-h3"><a href="#select-gene">Select gene of interest</a></li>
+      <li class="sidebar-h3"><a href="#plot-gene">Plot gene of interest</a></li>
+      <li class="sidebar-h3"><a href="#trajectory">Trajectory</a></li>
+      <li class="sidebar-h3"><a href="#heatmap">Heatmap</a></li>
+      <li class="sidebar-h3"><a href="#dotplot">Dot plot</a></li>
+      <li class="sidebar-h3"><a href="#violin">Violin plot</a></li>
+      <li class="sidebar-h3"><a href="#correlation">Two-gene correlation</a></li>
+      <li class="sidebar-h3"><a href="#statistics">Plot statistics</a></li>
+      <li class="sidebar-h2"><a href="#running">Running the app</a></li>
+      <li class="sidebar-h3"><a href="#requirements">Requirements</a></li>
+      <li class="sidebar-h3"><a href="#setup">Local setup</a></li>
+      <li class="sidebar-h3"><a href="#run-app">Run the app</a></li>
+      <li class="sidebar-h2"><a href="#repo-structure">Repository structure</a></li>
+      <li class="sidebar-h2"><a href="#citation">Citation</a></li>
+      <li class="sidebar-h2"><a href="#feedback">Feedback and support</a></li>
+      <li class="sidebar-h2"><a href="#howto">Building the app</a></li>
+      <li class="sidebar-h2"><a href="#acknowledgements">Acknowledgements</a></li>
+    </ul>
+  </div>
 
-      /* Footer and modal */
-      .site-footer {
-        background: #000;
-        color: #fff;
-        border-top: 1px solid #737373;
-        padding: 38px 0;
-      }
-      .footer-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 36px;
-        font-size: 16px;
-      }
-      .legal-links {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 8px;
-      }
-      .legal-links a {
-        text-decoration: none;
-      }
-      .legal-links a:hover {
-        text-decoration: underline;
-        text-underline-offset: 4px;
-        color: var(--green);
-      }
-      .modal {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgb(0 0 0 / 82%);
-        z-index: 50;
-        padding: 24px;
-        overflow: auto;
-      }
-      .modal.show {
-        display: flex;
-      }
-      .modal-card {
-        width: min(760px, 100%);
-        margin: auto;
-        background: var(--page);
-        border: 2px solid #000;
-        padding: 30px;
-        position: relative;
-      }
-      .close {
-        position: absolute;
-        right: 16px;
-        top: 10px;
-        border: 0;
-        background: transparent;
-        font-size: 32px;
-        cursor: pointer;
-      }
-      .detail-grid {
-        display: grid;
-        grid-template-columns: 170px 1fr;
-        gap: 9px 16px;
-        margin: 24px 0;
-        font-size: 14px;
-      }
-      .detail-grid b {
-        text-transform: lowercase;
-      }
+  <main class="main-content">
+    <div class="header-rule"><div class="page-header" id="top">
+      <img class="header-logo" src="code/shiny/www/Developing_Mouse_Visual_Cortex_logo.png" alt="Developing Mouse Visual Cortex logo">
+      <h1>Developing Mouse Visual Cortex Gene Expression Viewer</h1>
+      <img class="header-logo" src="code/shiny/www/allen_institute_logo.svg" alt="Allen Institute logo">
+    </div></div>
 
-      @media (max-width: 1000px) {
-        .goals,
-        .cards {
-          grid-template-columns: repeat(2, 1fr);
-        }
-        .footer-row {
-          align-items: flex-start;
-          flex-direction: column;
-        }
-        .legal-links {
-          justify-content: flex-start;
-        }
-      }
-      @media (max-width: 680px) {
-        .wrap {
-          width: min(100% - 28px, 1240px);
-        }
-        .header-row,
-        .catalog-top {
-          align-items: stretch;
-          flex-direction: column;
-        }
-        .header-row {
-          padding: 20px 0;
-        }
-        .header-nav {
-          flex-wrap: wrap;
-        }
-        .goals,
-        .cards {
-          grid-template-columns: 1fr;
-        }
-        .controls input,
-        .controls select {
-          width: 100%;
-        }
-        .lead::after {
-          font-size: 72vw;
-          right: -10vw;
-          bottom: -24vw;
-        }
-        .detail-grid {
-          grid-template-columns: 1fr;
-        }
-        .legal-links {
-          display: block;
-        }
-        .legal-links a {
-          display: block;
-          margin: 8px 0;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <header class="site-header">
-      <div class="wrap header-row">
-        <div class="breadcrumb">
-          <a href="https://alleninstitute.org/">allen institute</a>/<a
-            href="https://brain-map.org/"
-            >allen brain map</a
-          >/resource finder
-        </div>
-        <nav class="header-nav">
-          <a href="https://alleninstitute.org/" target="_blank" rel="noopener"
-            >alleninstitute.org/</a
-          ><a
-            href="https://alleninstitute.org/science-resources"
-            target="_blank"
-            rel="noopener"
-            >open science resources/</a
-          >
-        </nav>
+    <p>The <strong>Developing Mouse Visual Cortex Gene Expression Viewer</strong> is an interactive R Shiny application for exploring pseudobulk gene expression and the fraction of cells expressing each gene across developmental age, developmental stage, cell type, donor, library, and anatomical metadata. Users can identify candidate genes from a sortable statistics table, retrieve genes from public AWS storage, apply multiple simultaneous filters, create trajectory, heatmap, dot, violin or boxplot, and two-gene correlation views, and share configured analyses through bookmarked URLs.</p>
+    <p>The underlying resource is part of the <a href="https://brain-map.org/bkp/explore/abc-atlas" target="_blank" rel="noopener noreferrer">Allen Brain Cell Atlas</a>, an open-science platform for visualizing and analyzing multimodal single-cell data across the mammalian brain.</p>
+    <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square"></i> Launch the interactive viewer</a> <a class="launch-button" href="https://github.com/AllenInstitute/mouse-developing-vis-app/" rel="noopener noreferrer" target="_blank"><i class="fa-brands fa-github"></i> Go to GitHub</a>
+    
+    <hr>
+    <section aria-labelledby="getting-started">
+      <h2 id="getting-started"><i class="fas fa-compass" aria-hidden="true"></i> Getting started</h2>
+      <p>Explore what the viewer can do through examples that revisit findings from <a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">Continuous cell-type diversification in mouse visual cortex development</a>. Each linked example opens a gene with its filters and plot settings already configured.</p>
+      <h3 id="cell-type-markers">Figure 2c: Cell-type markers</h3>
+      <p>Explore prenatal and developmental expression patterns across cell populations.</p>
+      <div class="getting-started-cards">
+        <article class="getting-started-card">
+          <h4>Tnc: prenatal glioblast expression</h4>
+          <p>Examine prenatal Tnc expression in glioblasts using an embryonic-stage heatmap.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Tnc%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22stage%22%2C%22stacked_filter_values%22%3A%7B%22stage%22%3A%22embryonic%22%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22heatmap%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A3.28486752540041%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22lm%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A3.28486752540041%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Afalse%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Tnc">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Neurog1: prenatal nonIT IP expression</h4>
+          <p>Explore prenatal Neurog1 expression in nonIT intermediate progenitor (IP) cells using a dot plot.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Neurog1%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22stage%22%2C%22stacked_filter_values%22%3A%7B%22stage%22%3A%22embryonic%22%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22dot%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A0.6%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22lm%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A0.6%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Afalse%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3Anull%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Neurog1">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Hmga2: enriched expression in NEC cells</h4>
+          <p>Compare Hmga2 across development, with its highest expression in neuroepithelial (NEC) cells.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Hmga2%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%5B%5D%2C%22stacked_filter_values%22%3A%7B%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22heatmap%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A2.5%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22lm%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A2.5%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Afalse%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Hmga2">Show this example</a>
+        </article>
       </div>
-    </header>
-
-    <main>
-      <section class="lead">
-        <div class="wrap">
-          <div class="lead-copy">
-            <h1>what do you want to do?</h1>
-            <p>
-              Choose a scientific goal to narrow the catalog, then explore
-              relevant tools, datasets, atlases, software, and support resources
-              below.
-            </p>
-            <div class="goals">
-              <button class="goal" data-goal="expression">
-                <span class="goal-icon">🧬</span><b>Explore gene expression/</b>
-              </button>
-              <button class="goal" data-goal="celltypes">
-                <span class="goal-icon">🔬</span><b>Explore cell types/</b>
-              </button>
-              <button class="goal" data-goal="anatomy">
-                <span class="goal-icon">🗺️</span><b>Explore brain anatomy/</b>
-              </button>
-              <button class="goal" data-goal="analyze">
-                <span class="goal-icon">🧭</span><b>Map or analyze data/</b>
-              </button>
-              <button class="goal" data-goal="data">
-                <span class="goal-icon">🗂️</span><b>Find data or code/</b>
-              </button>
-              <button class="goal" data-goal="connectivity">
-                <span class="goal-icon">🕸️</span><b>Study connectivity/</b>
-              </button>
-              <button class="goal" data-goal="experiment">
-                <span class="goal-icon">🧪</span><b>Plan an experiment/</b>
-              </button>
-              <button class="goal" data-goal="disease">
-                <span class="goal-icon">🧠</span><b>Study aging and disease/</b>
-              </button>
-              <button class="goal" data-goal="help">
-                <span class="goal-icon">💬</span><b>Learn or get help/</b>
-              </button>
-            </div>
-            <button id="showAll" class="show-all">
-              Browse all Allen Brain Map resources/
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section class="catalog catalog-hidden" id="resources">
-        <div class="wrap">
-          <div class="catalog-top">
-            <div class="catalog-head">
-              <h2 id="title">Browse all Allen Brain Map resources/</h2>
-              <p>Search or filter the current catalog.</p>
-            </div>
-            <div class="controls">
-              <input
-                id="search"
-                placeholder="Search name, keyword, dataset, or goal"
-                aria-label="Search resources"
-              /><select id="species" aria-label="Filter by species">
-                <option value="">All species</option>
-              </select>
-            </div>
-          </div>
-          <div class="status" id="status"></div>
-          <div id="cards"></div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <div class="wrap footer-row">
-        <div>© 2026 allen institute. all rights reserved.</div>
-        <nav class="legal-links">
-          <a href="https://alleninstitute.org/legal/privacy-policy/"
-            >privacy policy /</a
-          ><a href="https://alleninstitute.org/legal/terms-use/"
-            >terms of use /</a
-          ><a href="https://alleninstitute.org/legal/citation-policy/"
-            >citation policy /</a
-          ><a href="https://alleninstitute.org/employee-portal/"
-            >employee portal /</a
-          ><a href="https://alleninstitute.org/policy-compliance/"
-            >policy &amp; compliance /</a
-          ><a href="#" id="cookieSettings">cookie settings /</a>
-        </nav>
+      <h3 id="progenitor-stages">Figure 2d: Developmental stages in NEC and RG populations</h3>
+      <p>Compare early and late expression patterns in neuroepithelial (NEC) and radial glial (RG) populations.</p>
+      <div class="getting-started-cards">
+        <article class="getting-started-card">
+          <h4>Sntb2: early NEC and RG expression</h4>
+          <p>Explore early Sntb2 expression in NEC and RG populations using a prenatal dot plot.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Sntb2%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%5B%22stage%22%2C%22class%22%5D%2C%22stacked_filter_values%22%3A%7B%22stage%22%3A%22embryonic%22%2C%22class%22%3A%5B%22NEC%22%2C%22CR%20Glut%22%2C%22RG%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22dot%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A0.833070075346307%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22lm%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A0.833070075346307%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Afalse%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Sntb2">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Sparcl1: later NEC and RG expression</h4>
+          <p>Examine later Sparcl1 expression in NEC and RG populations. Tile labels show the small number of contributing observations, highlighting sparse sampling.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Sparcl1%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%5B%22stage%22%2C%22class%22%5D%2C%22stacked_filter_values%22%3A%7B%22stage%22%3A%22embryonic%22%2C%22class%22%3A%5B%22NEC%22%2C%22CR%20Glut%22%2C%22RG%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22heatmap%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A0.525715603438166%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22lm%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A0.525715603438166%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Sparcl1">Show this example</a>
+        </article>
       </div>
-    </footer>
-    <div class="modal" id="modal">
-      <div class="modal-card">
-        <button class="close" aria-label="Close">×</button>
-        <div id="modalBody"></div>
+      <h3 id="expression-trajectories">Figure 4b: Gene-expression trajectories</h3>
+      <p>Explore contrasting developmental trajectories across neuronal and glial populations.</p>
+      <div class="getting-started-cards">
+        <article class="getting-started-card">
+          <h4>Pou3f1: early IT peak and sustained L5 ET expression</h4>
+          <p>Pou3f1 expression peaks early across IT glutamatergic populations, while showing sustained higher expression in L5 ET cells.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Pou3f1%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22class%22%2C%22stacked_filter_values%22%3A%7B%22class%22%3A%5B%22IT%20Glut%22%2C%22nonIT%20Glut%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22trajectory%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22subclass%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A2%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A2%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Pou3f1">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Prox1: contrasting GABAergic trajectories</h4>
+          <p>Compare declining Prox1 expression in SST/MGE-derived GABAergic populations with increasing expression in CGE-derived GABAergic populations.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Prox1%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22class%22%2C%22stacked_filter_values%22%3A%7B%22class%22%3A%5B%22CTX-CGE%20GABA%22%2C%22CTX-MGE%20GABA%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22trajectory%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22class%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A3%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22class%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A3%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%222%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Prox1">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Sox10: OPC increase and high oligodendrocyte expression</h4>
+          <p>Explore increasing Sox10 expression in oligodendrocyte precursor cells (OPCs) and high expression in oligodendrocytes.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Sox10%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22class%22%2C%22stacked_filter_values%22%3A%7B%22class%22%3A%5B%22OPC-Oligo%22%2C%22Astro-Epen%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22trajectory%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22subclass%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A3%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A3%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%221%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Sox10">Show this example</a>
+        </article>
       </div>
-    </div>
+      <h3 id="other-examples">Other examples</h3>
+      <p>Explore additional developmental patterns and compare expression between genes.</p>
+      <div class="getting-started-cards">
+        <article class="getting-started-card">
+          <h4>Chrna6: late L5 ET expression (Extended Data Figure 6g)</h4>
+          <p>Explore Chrna6 expression across L5 ET subclusters. Expression begins relatively late, around P9, and peaks in adulthood; the distinct Chrna6 subset corresponds to clusters 371–373.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Chrna6%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22subclass%22%2C%22stacked_filter_values%22%3A%7B%22subclass%22%3A%22L5%20ET%20CTX%20Glut%22%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22dot%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A0.414370374613413%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subcluster%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A0.414370374613413%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%221%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Chrna6">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Pvalb: later expression onset (Extended Data Figure 11d)</h4>
+          <p>Compare Pvalb expression in Pvalb and Sst populations, with Pvalb expression onset around P11–P14.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Pvalb%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22subclass%22%2C%22stacked_filter_values%22%3A%7B%22subclass%22%3A%5B%22Sst%20Gaba%22%2C%22Pvalb%20Gaba%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22violin%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22subclass%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A2.674%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A2.674%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%222%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Pvalb">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Sst: earlier expression onset (Extended Data Figure 11d)</h4>
+          <p>Compare Sst expression in Sst and Pvalb populations. Sst expression suggests earlier Sst-type formation, around P3.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Sst%22%2C%22comparison_gene%22%3Anull%2C%22filter_fields%22%3A%22subclass%22%2C%22stacked_filter_values%22%3A%7B%22subclass%22%3A%5B%22Sst%20Gaba%22%2C%22Pvalb%20Gaba%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22violin%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22subclass%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A4.283%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A1%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1.5%2C%22correlation_size_maximum%22%3A7%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A4.283%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%222%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Sst">Show this example</a>
+        </article>
+        <article class="getting-started-card">
+          <h4>Sox4 and Sox11: correlated expression</h4>
+          <p>Compare the neurogenesis markers Sox4 and Sox11 across cell types. Their expression is generally correlated, with relatively higher Sox4 expression in oligodendrocytes.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Sox4%22%2C%22comparison_gene%22%3A%22Sox11%22%2C%22filter_fields%22%3A%5B%5D%2C%22stacked_filter_values%22%3A%7B%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22correlation%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3Anull%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A5%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22subclass%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A5%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1%2C%22correlation_size_maximum%22%3A2%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A3.16884789575156%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Atrue%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%222%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Sox4">Show this example</a>
+        </article>
+          <article class="getting-started-card">
+          <h4>Cux2: contrasting GABAergic and L2/3 IT trajectories</h4>
+          <p>Cux2 expression decreases in Pvalb/Sst GABAergic populations while increasing in L2/3 IT glutamatergic populations.</p>
+          <a class="launch-button" href="https://molgen-shiny.org/dev_mouse_gene_exploration/?_values_&amp;viewer_state=%7B%22schema_version%22%3A2%2C%22gene%22%3A%22Cux2%22%2C%22comparison_gene%22%3A%22Sox11%22%2C%22filter_fields%22%3A%22subclass%22%2C%22stacked_filter_values%22%3A%7B%22subclass%22%3A%5B%22L2%2F3%20IT%20CTX%20Glut%22%2C%22Pvalb%20Gaba%22%2C%22Sst%20Gaba%22%5D%7D%2C%22omit_zero_values%22%3Afalse%2C%22plot_type%22%3A%22trajectory%22%2C%22trajectory_measure%22%3A%22expression%22%2C%22facet_by%22%3A%22subclass%22%2C%22scale_minimum%22%3A0%2C%22scale_maximum%22%3A2.013%2C%22progression_variable%22%3A%22donor_age%22%2C%22facet_variable%22%3A%22subclass%22%2C%22color_variable%22%3A%22none%22%2C%22smoother%22%3A%22loess%22%2C%22x_variable%22%3A%22donor_age%22%2C%22second_dimension%22%3A%22class%22%2C%22correlation_color_variable%22%3A%22subclass%22%2C%22correlation_automatic_limits%22%3Anull%2C%22correlation_axis_minimum%22%3A0%2C%22correlation_axis_maximum%22%3A4.142%2C%22show_orthogonal_fit%22%3Atrue%2C%22correlation_size_minimum%22%3A1%2C%22correlation_size_maximum%22%3A2%2C%22log_scale%22%3Atrue%2C%22automatic_expression_limits%22%3Anull%2C%22expression_minimum%22%3A0%2C%22expression_maximum%22%3A2.013%2C%22dot_size_minimum%22%3A1%2C%22dot_size_maximum%22%3A9%2C%22show_heatmap_counts%22%3Afalse%2C%22show_points%22%3Atrue%2C%22show_fit_error%22%3Atrue%2C%22violin_display%22%3A%22violin%22%2C%22violin_facets_per_page%22%3A%2212%22%2C%22violin_page%22%3A%221%22%2C%22show_violin_points%22%3Atrue%2C%22facets_per_row%22%3A%223%22%2C%22facet_row_height%22%3A%22450%22%7D" target="_blank" rel="noopener noreferrer" aria-label="Show this example: Cux2">Show this example</a>
+        </article>
+      </div>
+    </section>
+    <hr>
+    <h2 id="data"><i class="fas fa-database"></i> Data</h2>
+    <h3 id="scientific-source">Scientific source</h3>
+    <p>The viewer is based on the data resource associated with:</p>
+    <blockquote><p>Gao, Y., van Velthoven, C. T. J., Lee, C., et al. <strong>Continuous cell-type diversification in mouse visual cortex development.</strong> <em>Nature</em> (2025). <a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">View the publication DOI</a>.</p></blockquote>
+    <p>Source documentation, notebooks, manifests, expression matrices, metadata, and taxonomy annotations are available through the <a href="https://alleninstitute.github.io/abc_atlas_access/descriptions/Dev-Mouse-Vis-Cortex-dataset.html" target="_blank" rel="noopener noreferrer">Developing Mouse Visual Cortex dataset documentation</a> and the <a href="https://alleninstitute.github.io/abc_atlas_access/" target="_blank" rel="noopener noreferrer">ABC Atlas Access Python package</a>.</p>
 
-    <script>
-      // Data location and labels for the nine goal categories.
-      const DATA_FILE = "./Allen_Brain_Map_Tool_Inventory.csv";
-      const goalLabels = {
-        expression: "Explore gene expression",
-        celltypes: "Explore cell types",
-        anatomy: "Explore brain anatomy",
-        analyze: "Map or analyze data",
-        data: "Find data or code",
-        connectivity: "Study connectivity",
-        experiment: "Plan an experiment",
-        disease: "Study aging and disease",
-        help: "Learn or get help",
-      };
-      const FALLBACK =
-        "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20120%20120%22%3E%3Crect%20width%3D%22120%22%20height%3D%22120%22%20fill%3D%22%23808080%22/%3E%3C/svg%3E";
-      let resources = [];
-      let active = "";
-      const $ = (id) => document.getElementById(id);
-      const esc = (value) =>
-        String(value || "").replace(
-          /[&<>"']/g,
-          (c) =>
-            ({
-              "&": "&amp;",
-              "<": "&lt;",
-              ">": "&gt;",
-              '"': "&quot;",
-              "'": "&#039;",
-            })[c],
-        );
-      const split = (value) =>
-        String(value || "")
-          .split(";")
-          .map((x) => x.trim())
-          .filter(Boolean);
+    <h3 id="pseudobulk">Pseudobulk expression</h3>
+    <p>The app uses a pseudobulk AnnData source generated from the raw Developing Mouse Visual Cortex single-cell count matrix. Raw counts were summed separately for each combination of <code>library_label</code> and the source cluster identifier (<code>cluster_alias</code>). This identifier is retained here as data-preparation provenance, but is not exposed as a selectable metadata field in the viewer. Each row is a library-by-cluster observation, each column is a gene, and each value in <code>X</code> is the summed raw count across contributing cells. A matching sparse <code>number_of_cells_expressing</code> layer records how many source cells have a raw count greater than zero for each gene and pseudobulk observation.</p>
+    <ul>
+      <li><code>number_of_cells</code> records the total number of cells contributing to each pseudobulk observation.</li>
+      <li><code>number_of_cells_expressing</code> provides the numerator used to calculate the fraction of cells expressing a selected gene.</li>
+      <li>Observation metadata retain library, donor, developmental age, anatomy, and cell-taxonomy annotations. The app also derives a categorical <code>stage</code> field, assigning embryonic ages to <code>embryonic</code> and postnatal ages to <code>postnatal</code>.</li>
+      <li>Large source files and the intermediate ABC Atlas cache are not distributed through GitHub.</li>
+    </ul>
 
-      // Deduplicate display tags and remove compounds covered by simpler tags.
-      function displayKeywords(r) {
-        const key = x => x.trim().toLowerCase();
-        const species = [...new Map(r.species.map(x => [key(x), x])).values()];
-        const multiple = species.length > 1 || species.some(x => /^(multiple|multi)[ -]?species$/i.test(x));
-        const label = multiple ? "Multiple species" : species[0];
-        const speciesKeys = new Set(species.map(key));
-        if (multiple) ["mouse", "human", "rat", "macaque", "non-human primate", "multiple species", "multispecies"].forEach(x => speciesKeys.add(x));
-        const tags = [...new Map(split(r.tags).map(x => [key(x), x])).values()].filter(x => !speciesKeys.has(key(x)));
-        const words = x => (key(x).match(/[a-z0-9]+/g) || []).map(w => /^(developing|developmental|development)$/.test(w) ? "development" : w);
-        const concise = tags.filter((tag, i) => {
-          const tokens = words(tag);
-          const covered = new Set(species.flatMap(words));
-          tags.forEach((other, j) => {
-            if (j !== i && words(other).length < tokens.length) words(other).forEach(w => covered.add(w));
-          });
-          return !tokens.length || !tokens.every(w => covered.has(w));
-        });
-        return [...concise.slice(0, 2), ...(label ? [label] : [])];
-      }
+    <h3 id="parquet">Gene-level Parquet files</h3>
+    <p>The pseudobulk source was converted into a gene-partitioned Parquet resource. Each gene is stored under <code>counts_by_gene/gene=&lt;gene_key&gt;/</code> with <code>sample_id</code>, <code>summed_counts</code>, and <code>number_of_cells_expressing</code>. The app opens only the selected partition and supports one or multiple Parquet files in that directory. If detection counts are unavailable in an older partition, expression-only views can still be used. Fraction-expressing views and fraction-sized dot plots require valid detection counts; dot size does not fall back to expression.</p>
+    <p>Expression is displayed as counts per ten thousand (CP10K), using the existing CPM scaling factors:</p>
+    <pre><code>CPM scaling factor = 1,000,000 / total counts across all genes in the pseudobulk observation
+CP10K for a selected gene = summed counts × (CPM scaling factor / 100)</code></pre>
+    <p>Users may display CP10K or <code>ln(CP10K + 1)</code>, calculate the fraction of cells expressing a gene as <code>number_of_cells_expressing / number_of_cells</code>, and exclude zero-count observations. For grouped dot-plot values, fractions are weighted correctly by summing expressing-cell counts and total-cell counts before division.</p>
 
-      // Parse the external CSV, including quoted fields and embedded commas.
-      function parseCSV(text) {
-        const rows = [];
-        let row = [];
-        let field = "";
-        let quoted = false;
-        for (let i = 0; i < text.length; i++) {
-          const c = text[i],
-            next = text[i + 1];
-          if (quoted) {
-            if (c === '"' && next === '"') {
-              field += '"';
-              i++;
-            } else if (c === '"') quoted = false;
-            else field += c;
-          } else if (c === '"') quoted = true;
-          else if (c === ",") {
-            row.push(field);
-            field = "";
-          } else if (c === "\n") {
-            row.push(field.replace(/\r$/, ""));
-            rows.push(row);
-            row = [];
-            field = "";
-          } else field += c;
-        }
-        if (field || row.length) {
-          row.push(field);
-          rows.push(row);
-        }
-        return rows;
-      }
+    <h3 id="metadata">Metadata and value sets</h3>
+    <ul>
+      <li><code>obs_metadata.parquet</code> contains pseudobulk metadata and unique <code>sample_id</code> values.</li>
+      <li><code>gene_map.parquet</code> maps gene symbols to filesystem-safe partition keys.</li>
+      <li><code>CPM_scaling.csv</code> contains row-aligned CPM scaling factors.</li>
+      <li><code>value_sets.csv</code> supplies authoritative label order and colors for categorical metadata.</li>
+      <li><code>table_column_definitions.csv</code> is a required local startup file supplying on-hover definitions for statistics-table headers.</li>
+      <li><code>abc_atlas_gene_urls.csv.gz</code> is a required local startup file mapping genes to precomputed ABC Atlas links.</li>
+      <li><code>www/tokens.csv</code>, when present with <code>token</code>, <code>type</code>, and <code>name</code> columns, supplies the searchable biological glossary in the sidebar.</li>
+    </ul>
+    <p>Values absent from <code>value_sets.csv</code> are retained and assigned distinct fallback colors. For cluster-level exploration, use <code>subcluster</code>, as in the Chrna6 example; <code>cluster_alias</code> is not offered as a metadata selector.</p>
 
-      // Assign each resource to one or more categories from its goal, field, type, tags, and programs.
-      function assignGoals(resource) {
-        const text = [
-          resource.goal,
-          resource.field,
-          resource.type,
-          resource.tags,
-          resource.programs,
-        ]
-          .join(" ")
-          .toLowerCase();
-        const rules = {
-          expression: [
-            "gene expression",
-            "transcriptom",
-            "rna-seq",
-            "microarray",
-            "ish",
-          ],
-          celltypes: [
-            "cell type",
-            "taxonomy",
-            "annotation",
-            "patch-seq",
-            "multimodal",
-          ],
-          anatomy: [
-            "brain anatomy",
-            "anatomy",
-            "neuroanatomy",
-            "reference atlas",
-            "ccf",
-            "parcellation",
-            "spinal cord",
-          ],
-          analyze: ["analy", "mapping", "mapmycells", "compare taxonomies"],
-          data: [
-            "data access",
-            "repository",
-            "catalog",
-            "data portal",
-            "download",
-            "api",
-            "software",
-            "code",
-            "github",
-            "sdk",
-            "model",
-            "simulation",
-            "bmtk",
-            "sonata",
-          ],
-          connectivity: [
-            "connectivity",
-            "projection",
-            "synaptic",
-            "connectome",
-            "circuit",
-          ],
-          experiment: [
-            "genetic tool",
-            "experimental",
-            "hardware",
-            "instrument",
-            "protocol",
-            "openscope",
-          ],
-          disease: [
-            "aging",
-            "disease",
-            "alzheimer",
-            "dementia",
-            "glioblastoma",
-            "tbi",
-            "sea-ad",
-          ],
-          help: [
-            "documentation",
-            "tutorial",
-            "support",
-            "forum",
-            "learn",
-            "troubleshoot",
-          ],
-        };
-        const matches = Object.entries(rules)
-          .filter(([, terms]) => terms.some((term) => text.includes(term)))
-          .map(([key]) => key);
-        return matches.length ? matches : ["data"];
-      }
+    <h3 id="aws">AWS storage and access</h3>
+    <p>The app anonymously reads lightweight metadata and statistics at startup and retrieves expression only for selected genes. No AWS credentials are required. Current test data are in the <a href="https://sea-ad-single-cell-profiling.s3.amazonaws.com/index.html#Multiregion_2026/previous_objects/parquet/TEST_dev_mouse/" target="_blank" rel="noopener noreferrer">public TEST_dev_mouse S3 prefix</a>.</p>
 
-      // Convert CSV rows into resource objects used by the cards and filters.
-      function mapRows(matrix) {
-        const headers = matrix[0].map((x) => x.replace(/^\uFEFF/, ""));
-        return matrix
-          .slice(1)
-          .filter((row) => row.some(Boolean))
-          .map((row) => {
-            const o = Object.fromEntries(
-              headers.map((header, i) => [header, row[i] || ""]),
-            );
-            const item = {
-              name: o["Tool / Resource Name"],
-              url: o.URL,
-              image: o["Icon Image URL"] || FALLBACK,
-              description: o["Brief Description"],
-              type: o["Resource Type"],
-              field: o["Field Category"],
-              goal: o["Primary User Goal"],
-              species: split(o.Species),
-              input: o["Input / Data Type"],
-              output: o["Output / Experience"],
-              access: o["Access Mode"],
-              rrid: o.RRID,
-              tags: o["Tags / Keywords"],
-              programs: o["Associated Datasets / Programs"],
-            };
-            item.goals = assignGoals(item);
-            return item;
-          });
-      }
+    <hr>
+    <h2 id="using-the-viewer"><i class="fas fa-computer-mouse"></i> Using the viewer</h2>
+    <h3>Left control panel</h3>
+    <p>The left panel controls gene retrieval, stacked filtering, expression scaling, and plot configuration. Filter and plot controls appear after the first gene has loaded.</p>
 
-      // Render the currently selected goal, species, and text-search subset.
-      function render() {
-        const query = $("search").value.trim().toLowerCase();
-        const species = $("species").value;
-        const shown = resources.filter(
-          (r) =>
-            (!active || r.goals.includes(active)) &&
-            (!species || r.species.includes(species)) &&
-            (!query ||
-              Object.values(r).flat().join(" ").toLowerCase().includes(query)),
-        );
-        $("title").textContent = active
-          ? `${goalLabels[active]}/`
-          : "Browse all Allen Brain Map resources/";
-        $("status").innerHTML =
-          `Showing <b>${shown.length}</b> of ${resources.length} resources`;
-        $("cards").className = "cards";
-        $("cards").innerHTML =
-          shown
-            .map(
-              (r) =>
-                `<article class="card"><div class="card-top"><img class="icon" src="${esc(r.image)}" alt="" onerror="this.onerror=null;this.src='${FALLBACK}'"><div><div class="kind">${esc(r.type || "Resource")}/</div><h3>${esc(r.name)}</h3></div></div><p>${esc(r.description)}</p><div class="chips">${displayKeywords(r).map((x) => `<span class="chip">${esc(x)}</span>`).join("")}</div><div class="actions"><a class="open" href="${esc(r.url)}" target="_blank" rel="noopener">open resource/</a><button class="details" data-name="${esc(r.name)}">details/</button></div></article>`,
-            )
-            .join("") ||
-          '<div class="loading">No resources match the current filters.</div>';
-        document
-          .querySelectorAll(".details")
-          .forEach(
-            (button) =>
-              (button.onclick = () =>
-                openDetail(
-                  resources.find((r) => r.name === button.dataset.name),
-                )),
-          );
-      }
+    <h3 id="gene">Gene</h3>
+    <ol>
+      <li>Type a gene symbol or select a gene from the statistics table.</li>
+      <li>Select <strong>Get gene data</strong>.</li>
+      <li>The app reads the selected partition, joins counts to metadata by <code>sample_id</code>, calculates CP10K, and stores the result in an in-memory cache.</li>
+      <li>After loading a gene, the sidebar provides separate <strong>Plot in ABC Atlas</strong> and <strong>GeneCards</strong> buttons.</li>
+    </ol>
+    <p>The selector starts empty, displays an example gene, and does not require deleting a prefilled value.</p>
 
-      function openDetail(r) {
-        const line = (label, value) =>
-          value ? `<b>${esc(label)}/</b><span>${esc(value)}</span>` : "";
-        $("modalBody").innerHTML =
-          `<img class="icon" src="${esc(r.image)}" alt=""><h2>${esc(r.name)}</h2><p>${esc(r.description)}</p><div class="detail-grid">${line("primary goal", r.goal)}${line("field", r.field)}${line("species", r.species.join("; "))}${line("input / data", r.input)}${line("output / experience", r.output)}${line("access mode", r.access)}${line("datasets / programs", r.programs)}${line("RRID", r.rrid)}</div><a class="open" href="${esc(r.url)}" target="_blank" rel="noopener">open resource/</a>`;
-        $("modal").classList.add("show");
-      }
+    <h3 id="filter-and-scale">Filter and scale</h3>
+    <ul>
+      <li><strong>Filter metadata</strong> can add any number of simultaneous filters.</li>
+      <li>Categorical fields use multi-select value controls; selections within a field use OR.</li>
+      <li>Numeric fields use range sliders.</li>
+      <li>Filters across fields are combined with AND.</li>
+      <li><strong>Discard observations with zero counts</strong> removes observations with no counts for the selected gene.</li>
+      <li><strong>Gene metric</strong> switches supported plots between gene expression and the fraction of cells expressing the gene.</li>
+      <li><strong>Plot ln(CP10K + 1)</strong> switches between transformed and untransformed CP10K when expression is selected.</li>
+      <li><strong>Minimum Expr</strong> and <strong>Maximum Expr</strong> provide suggested expression limits that remain directly editable. For fraction-expressing views, the labels change to <strong>Minimum Frac</strong> and <strong>Maximum Frac</strong>, with values constrained to 0–1. The up/down arrows change each limit by 0.1. Saved views restore their configured limits; no separate automatic-limits checkbox is required. Values outside the selected range are squished to the bounds.</li>
+    </ul>
 
-      // Load data while leaving the catalog hidden until a visitor selects a goal or Browse all.
-      async function load() {
-        try {
-          const response = await fetch(DATA_FILE, { cache: "no-store" });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          resources = mapRows(parseCSV(await response.text()));
-          const speciesValues = [
-            ...new Set(resources.flatMap((r) => r.species)),
-          ]
-            .filter((value) => value && value !== "Other")
-            .sort();
-          speciesValues.forEach((value) =>
-            $("species").insertAdjacentHTML(
-              "beforeend",
-              `<option>${esc(value)}</option>`,
-            ),
-          );
-        } catch (error) {
-          $("resources").classList.remove("catalog-hidden");
-          $("cards").className = "error";
-          $("cards").innerHTML =
-            `Could not load <b>${esc(DATA_FILE)}</b>. Confirm the CSV is in the same published folder as index.html. (${esc(error.message)})`;
-        }
-      }
+    <h3 id="plot-controls">Plot controls</h3>
+    <ul>
+      <li><strong>Plot type</strong> selects one of five visualizations.</li>
+      <li>Plot-specific controls configure dimensions, facets, colors, trend lines, pagination, plot height, counts, and observation display. Additional controls are grouped under <strong>Additional plot options</strong>, with another <strong>Generate plot</strong> button at the bottom. Previous/next page buttons above the generated plot change its page without applying other unsubmitted settings. Hover over dropdown labels for concise control definitions.</li>
+      <li><strong>Generate plot</strong> captures the current settings, creates the plot, and opens the plotting tab.</li>
+      <li><strong>Share this view</strong> creates a URL bookmark containing the selected gene or genes, active filters, and plot configuration. Opening the link restores the state, retrieves the required gene data, and regenerates the plot.</li>
+      <li><strong>Reset plot options</strong> restores defaults.</li>
+      <li>The optional alphabetical glossary below the plot controls supports exact lookup of abbreviations used in cell-type and anatomical labels.</li>
+    </ul>
 
-      document.querySelectorAll(".goal").forEach(
-        (button) =>
-          (button.onclick = () => {
-            $("resources").classList.remove("catalog-hidden");
-            active = button.dataset.goal;
-            document
-              .querySelectorAll(".goal")
-              .forEach((x) =>
-                x.classList.toggle("active", x.dataset.goal === active),
-              );
-            render();
-            $("resources").scrollIntoView({ behavior: "smooth" });
-          }),
-      );
-      $("showAll").onclick = () => {
-        $("resources").classList.remove("catalog-hidden");
-        active = "";
-        $("search").value = "";
-        $("species").value = "";
-        document
-          .querySelectorAll(".goal")
-          .forEach((x) => x.classList.remove("active"));
-        render();
-        $("resources").scrollIntoView({ behavior: "smooth" });
-      };
-      $("search").oninput = render;
-      $("species").onchange = render;
-      document.querySelector(".close").onclick = () =>
-        $("modal").classList.remove("show");
-      $("modal").onclick = (event) => {
-        if (event.target.id === "modal") $("modal").classList.remove("show");
-      };
-      $("cookieSettings").onclick = (event) => event.preventDefault();
-      load();
-    </script>
-  </body>
+    <hr>
+    <h2 id="app-tabs"><i class="fas fa-chart-bar"></i> Application tabs</h2>
+    <h3 id="select-gene">Select gene of interest</h3>
+    <p>This tab contains a sortable table of gene-level exploratory statistics, including expression magnitude, developmental change, regional and subclass specificity, fraction-expressing summaries, and gene type. Numeric fields retain numeric sorting and range filters. Gene symbols are plain text; hovering over a defined column header displays its description. Use the separate sidebar <strong>GeneCards</strong> button to open the loaded gene.</p>
+    <p>Exact-value multi-select filters are provided below the table for <code>gene_symbol</code>, <code>max_ROI</code>, <code>max_subclass</code>, and <code>gene_type</code>. Selections within one field use OR; filters across fields use AND. Gene-symbol filtering uses the plain gene symbol. Selecting a table row places the gene into the <strong>Gene symbol</strong> control.</p>
+    <div class="note"><strong>Important:</strong> Summary-table statistics are exploratory aids and are not substitutes for the analyses in the source study.</div>
+
+    <h3 id="plot-gene">Plot gene of interest</h3>
+    <p>The plotting tab supports five visualization types with matching plot-specific statistical summaries.</p>
+
+    <h4 id="trajectory">Trajectory across development</h4>
+    <p>The trajectory plot displays expression or fraction expressing across an ordered progression variable. Developmental ages are biologically ordered; visual gaps are capped to compress large unsampled intervals while retaining endpoint padding.</p>
+    <ul>
+      <li><strong>Facet by</strong> can separate groups or show all data together. Facet layout controls remain available when <strong>Show all data together</strong> is selected.</li>
+      <li><strong>Color by</strong> can overlay a categorical field or use one color.</li>
+      <li><strong>Trend line</strong> defaults to <strong>LOESS smoother</strong>; linear fit and no fit are also available.</li>
+      <li>An optional <strong>95% confidence band</strong> can be shown for LOESS and linear fits.</li>
+      <li><strong>Show individual observations</strong> toggles pseudobulk points.</li>
+      <li><strong>Facets per row</strong>, <strong>Height per facet</strong>, <strong>Facets per page</strong>, and <strong>Page Number</strong> keep large faceted views readable. Tall plots remain vertically scrollable.</li>
+      <li>Each eligible facet receives a Spearman monotonic-trend test using the displayed metric; facet p-values are BH corrected.</li>
+    </ul>
+
+    <h4 id="heatmap">Heatmap of mean expression</h4>
+    <p>The heatmap displays mean expression or mean fraction expressing for every occupied combination of two dimensions.</p>
+    <ul>
+      <li>Tile color represents the selected gene metric.</li>
+      <li><strong>Show number of observations</strong> optionally labels each tile with its contributing observation count.</li>
+      <li>Automatically calculated or manually selected limits apply to the fill scale.</li>
+      <li>A sparse rook-neighbor Moran's I test with 999 permutations summarizes autocorrelation of the displayed metric across the current ordered matrix.</li>
+    </ul>
+
+    <h4 id="dotplot">Dot plot of mean expression</h4>
+    <p>The dot plot uses the same two-dimensional grouping as the heatmap. Dot color represents mean expression, while dot area represents the weighted fraction of cells expressing the gene. <strong>Min. dot size</strong> and <strong>Max. dot size</strong> control the displayed size range without changing the underlying proportions; combinations with no data remain absent. The note below the plot reports separate sparse rook-neighbor Moran's I tests with 999 permutations for expression and fraction expressing.</p>
+
+    <h4 id="violin">Violin plot with observations</h4>
+    <p>The distribution plot shows expression or fraction-expressing distributions across horizontal-axis groups and second-dimension facets.</p>
+    <ul>
+      <li><strong>Distribution display</strong> switches between violin and boxplot representations.</li>
+      <li><strong>Show individual observations</strong> toggles the overlaid pseudobulk points; white points and error bars show means and standard errors.</li>
+      <li>Groups with fewer than two observations are omitted.</li>
+      <li><strong>Facets per row</strong>, <strong>Height per facet</strong>, <strong>Facets per page</strong>, and <strong>Page Number</strong> limit the size of each rendered image while preserving the complete filtered analysis.</li>
+      <li>Each eligible facet receives a Kruskal-Wallis test across horizontal-axis groups using the displayed metric; facet p-values are BH corrected across all eligible facets, not only the current page.</li>
+    </ul>
+
+    <h4 id="correlation">Two-gene correlation</h4>
+    <p>This plot compares two separately retrieved genes across matched <code>sample_id</code> values after applying active filters. The selected metric can be <code>ln(CP10K + 1)</code> or fraction expressing.</p>
+    <ul>
+      <li>Use <strong>Get 2nd gene data</strong> to retrieve the comparison gene through the same lazy reader and cache.</li>
+      <li>Points can be colored by metadata and are sized by <code>log10(number_of_cells)</code> when cell counts are available.</li>
+      <li><strong>Min. dot size</strong> and <strong>Max. dot size</strong> adjust the correlation-point size range.</li>
+      <li>Shared automatic or manual limits apply equally to both axes.</li>
+      <li>The plot is square with equal axis spacing.</li>
+      <li>An optional orthogonal total-least-squares line is invariant to swapping the x and y genes.</li>
+      <li>Expression mode reports Pearson R; fraction-expressing mode reports Spearman rho. The corresponding p-value appears in the plot title.</li>
+    </ul>
+
+    <h4 id="statistics">Plot-specific exploratory statistics</h4>
+    <ul>
+      <li><strong>Trajectory:</strong> per-facet Spearman rho for monotonic progression in expression or fraction expressing, with BH correction across eligible facets.</li>
+      <li><strong>Heatmap:</strong> sparse rook-neighbor Moran's I with a one-sided 999-permutation p-value for autocorrelation of the displayed metric.</li>
+      <li><strong>Dot:</strong> separate sparse rook-neighbor Moran's I tests for mean expression and fraction expressing.</li>
+      <li><strong>Violin or boxplot:</strong> per-facet Kruskal-Wallis tests of the displayed metric across horizontal-axis groups, with BH correction.</li>
+      <li><strong>Two-gene correlation:</strong> Pearson correlation for expression and Spearman correlation for fraction expressing.</li>
+    </ul>
+    <div class="note"><strong>Interpretation:</strong> These statistics describe the currently selected gene, filters, dimensions, and displayed observations. Interactive testing across many genes and configurations is exploratory and introduces multiple-comparison considerations beyond within-plot BH corrections.</div>
+
+    <hr>
+    <h2 id="running"><i class="fas fa-play-circle"></i> Running the app</h2>
+    <p>Most users should use the <a href="https://molgen-shiny.org/dev_mouse_gene_exploration/" target="_blank" rel="noopener noreferrer">hosted viewer</a>. The repository also supports local development and reproducible deployment.</p>
+    <h3 id="requirements">Requirements</h3>
+    <ul>
+      <li>R 4.3.3 or a compatible R installation;</li>
+      <li>S3 support in <code>arrow</code>;</li>
+      <li><code>shiny</code>, <code>bslib</code>, <code>arrow</code>, <code>dplyr</code>, <code>ggplot2</code>, <code>scales</code>, <code>shinycssloaders</code>, <code>cachem</code>, <code>DT</code>, and <code>jsonlite</code>;</li>
+      <li>internet access to the public AWS prefix;</li>
+      <li><code>abc_atlas_gene_urls.csv.gz</code> and <code>table_column_definitions.csv</code> in the app directory, plus the existing logo assets under <code>www/</code>.</li>
+    </ul>
+    <p>The app uses <code>renv.lock</code> to record tested package versions.</p>
+
+    <h3 id="setup">Local setup</h3>
+    <ol>
+      <li>Clone the <a href="https://github.com/AllenInstitute/mouse-developing-vis-app" target="_blank" rel="noopener noreferrer">mouse-developing-vis-app repository</a>.</li>
+      <li>Open RStudio in <code>code/shiny/</code>.</li>
+      <li>Restore dependencies from <code>renv.lock</code>.</li>
+    </ol>
+    <pre><code>install.packages("renv")
+renv::restore()</code></pre>
+
+    <h3 id="run-app">Run the app</h3>
+    <pre><code># From the code/shiny/ directory opened above:
+shiny::runApp(".")</code></pre>
+
+    <hr>
+    <h2 id="repo-structure"><i class="fas fa-folder-open"></i> Repository structure</h2>
+    <pre><code>.
+├── .github/workflows/deploy-connect.yml
+├── code/
+│   ├── data-preparation scripts
+│   └── shiny/
+│       ├── app.R
+│       ├── abc_atlas_gene_urls.csv.gz
+│       ├── table_column_definitions.csv
+│       ├── renv.lock
+│       └── www/
+│           ├── Developing_Mouse_Visual_Cortex_logo.png
+│           ├── allen_institute_logo.svg
+│           └── tokens.csv
+├── index.html
+├── README.md
+└── requirements.txt</code></pre>
+    <p>Large expression files, pseudobulk sources, metadata, and gene statistics remain outside GitHub in external data assets and public AWS storage.</p>
+
+    <hr>
+    <h2 id="citation"><i class="fas fa-book"></i> Citation</h2>
+    <p>If you use the viewer or underlying data, cite the source study:</p>
+    <blockquote><p>Gao, Y., van Velthoven, C. T. J., Lee, C., et al. <strong>Continuous cell-type diversification in mouse visual cortex development.</strong> <em>Nature</em> (2025). <a href="https://doi.org/10.1038/s41586-025-09644-1" target="_blank" rel="noopener noreferrer">View the publication DOI</a>.</p></blockquote>
+    <p>Please also report the viewer version or Git commit and the public-data access date.</p>
+
+    <hr>
+    <h2 id="feedback"><i class="fas fa-comments"></i> Feedback and support</h2>
+    <p>Questions, bug reports, and suggestions are welcome. <a href="https://github.com/AllenInstitute/mouse-developing-vis-app/issues" target="_blank" rel="noopener noreferrer">Open a GitHub issue</a> or contact <a href="mailto:jeremym@alleninstitute.org">Jeremy Miller</a>.</p>
+
+    <h2 id="howto"><i class="fas fa-screwdriver-wrench"></i> How the app was made</h2>
+    <p>The <a href="deployment_documentation.html">Rebuilding and Deployment Guide</a> documents the reproducible workflow used to prepare the pseudobulk and Parquet resources, publish data to AWS, run the Shiny app, deploy to Posit Connect, and configure automated deployment.</p>
+
+    <h2 id="acknowledgements"><i class="fas fa-hands-clapping"></i> Acknowledgements</h2>
+    <p>The underlying resource was generated through extensive experimental, computational, taxonomy, data-access, and publication efforts. We acknowledge the teams responsible for data generation, quality control, analysis, taxonomy construction, ABC Atlas Access, public cloud hosting, reproducible workflows, and application deployment.</p>
+  </main>
+</body>
 </html>
